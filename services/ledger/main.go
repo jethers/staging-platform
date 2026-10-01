@@ -19,11 +19,15 @@ type BalanceResponse struct {
 	Account  string  `json:"account"`
 	Balance  float64 `json:"balance"`
 	Currency string  `json:"currency"`
+	Version  string  `json:"version"`
 }
 
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// version é injetada em tempo de build via ldflags: -X main.version=<value>
+var version = "dev"
 
 // loggingMiddleware loga método, path, status code e latência de cada requisição.
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -34,8 +38,8 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(lrw, r)
 
-		log.Printf("request_id=%s method=%s path=%s status=%d latency=%s",
-			requestID, r.Method, r.URL.Path, lrw.statusCode, time.Since(start))
+		log.Printf("request_id=%s version=%s method=%s path=%s status=%d latency=%s",
+			requestID, version, r.Method, r.URL.Path, lrw.statusCode, time.Since(start))
 	})
 }
 
@@ -75,6 +79,7 @@ func balanceHandler(w http.ResponseWriter, r *http.Request) {
 		Account:  account,
 		Balance:  balance,
 		Currency: "BRL",
+		Version:  version,
 	})
 }
 
@@ -85,7 +90,7 @@ func main() {
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.LUTC)
-	log.Printf("service=ledger starting on port=%s", port)
+	log.Printf("service=ledger version=%s starting on port=%s", version, port)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)

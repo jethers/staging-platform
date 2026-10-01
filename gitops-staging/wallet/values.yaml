@@ -1,5 +1,6 @@
 # Base values — comuns a todos os ambientes do wallet
 name: wallet
+namespace: payments
 
 image:
   repository: staging-platform/wallet

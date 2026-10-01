@@ -1,2 +1,3 @@
 # Overrides para a instância compartilhada permanente do wallet
+role: staging
 replicaCount: 1

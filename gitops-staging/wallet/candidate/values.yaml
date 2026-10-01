@@ -1,6 +1,4 @@
+# Overrides para a instância candidata do wallet (efêmera)
+# O orquestrador adiciona 'role: candidate' e a seção 'virtualService' automaticamente
+role: candidate
 replicaCount: 1
-virtualService:
-  candidateHost: wallet-candidate.payments.svc.cluster.local
-  clientRoutes: []
-  enabled: false
-  host: wallet.payments.svc.cluster.local

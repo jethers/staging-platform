@@ -60,6 +60,9 @@ def write_candidate_values(
         with open(path) as f:
             existing = yaml.safe_load(f) or {}
 
+    # Garante o role candidate
+    existing["role"] = "candidate"
+
     # Monta configuração do VirtualService
     shared_host = f"{service}.{namespace}.svc.cluster.local"
     candidate_host = f"{service}-candidate.{namespace}.svc.cluster.local"

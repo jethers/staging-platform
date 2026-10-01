@@ -1,2 +1,4 @@
 # Overrides para instância do wallet como cliente de regressão do candidate checkout (efêmera)
+role: client
+target: checkout
 replicaCount: 1

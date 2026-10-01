@@ -1,6 +1,19 @@
 # Nome do serviço — usado em labels, nomes de recursos e seletores
 name: my-service
 
+# Namespace Kubernetes do serviço
+namespace: default
+
+# Role do deployment — define o sufixo do nome do recurso:
+#   staging    → <name>              (compartilhado, permanente)
+#   candidate  → <name>-candidate    (versão em homologação)
+#   dependency → <name>-<target>-dependency  (dependência dedicada)
+#   client     → <name>-<target>-client      (cliente de regressão)
+role: staging
+# Serviço candidato alvo — obrigatório para roles dependency e client
+# ex.: para wallet como dependency do checkout, target: checkout
+target: ""
+
 image:
   # Repositório da imagem (ex.: gcr.io/my-project/my-service)
   repository: my-service

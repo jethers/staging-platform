@@ -1,2 +1,4 @@
 # Overrides para instância do wallet como cliente de regressão do candidate ledger (efêmera)
+role: client
+target: ledger
 replicaCount: 1

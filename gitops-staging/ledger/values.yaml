@@ -1,5 +1,6 @@
 # Base values — comuns a todos os ambientes do ledger
 name: ledger
+namespace: payments
 
 image:
   repository: staging-platform/ledger
