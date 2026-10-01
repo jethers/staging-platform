@@ -4,6 +4,7 @@ Plataforma de homologação integrada para microsserviços. Serviços candidatos
 
 ## Documentação
 
+- [Demo (passo a passo)](docs/demo.md) — roteiro reproduzível para validar a PoC até a renderização dos charts
 - [Arquitetura](docs/architecture.md) — visão geral da solução, componentes e fluxo
 - [Roteamento com Istio](docs/routing.md) — como o tráfego é desviado para candidatas e dependências dedicadas
 - [Argo CD e ApplicationSet](docs/argocd.md) — provisionamento, ciclo de vida via release.yaml e prune
