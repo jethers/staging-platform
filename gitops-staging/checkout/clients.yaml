@@ -1,0 +1,5 @@
+app: checkout
+# Clients de regressão que testam a candidata do checkout.
+# Vazio no exemplo: o checkout é a borda do fluxo (checkout → wallet → ledger),
+# ninguém o consome internamente.
+regressionClients: []

@@ -1,0 +1,35 @@
+# Base values — identidade do serviço, comum a todas as situações (decisão 26)
+name: checkout
+namespace: payments
+
+image:
+  repository: staging-platform/checkout
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8080
+  type: ClusterIP
+
+env:
+  - name: PORT
+    value: "8080"
+  # O checkout chama o wallet pelo host do Service. Em homologação, o Istio
+  # roteia de forma transparente (sem precisar de URL específica da candidata).
+  - name: WALLET_URL
+    value: "http://wallet:8080"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

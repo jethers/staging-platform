@@ -106,58 +106,72 @@ docker compose down
 **Objetivo:** provar a lógica da plataforma operando sobre o gitops, sem precisar de cluster.
 O orquestrador lê os manifestos de homologação e escreve a estrutura efêmera no `gitops-staging`.
 
-**Cenário:** homologar uma nova versão (candidata) do `ledger`. O `wallet` é cliente de
-regressão do `ledger` (declarado em `gitops-staging/ledger/clients.yaml`).
+**Cenário (fiel ao PPT — fluxo `checkout → wallet → ledger`):** homologar uma nova versão
+(candidata) do **wallet**. O **ledger** é dependência do wallet (compartilhada); o **checkout**
+é cliente de regressão do wallet (declarado em `gitops-staging/wallet/clients.yaml`).
 
 ### 2.1 Preparar o estado base
 
-As dependências compartilhadas precisam ter runtime ativo no staging (digest preenchido),
-e os serviços precisam de digest produtivo registrado. Para a demo, usamos valores fictícios:
+Para homologar o wallet, o ambiente ao redor dele precisa estar na versão produtiva:
+
+- O **ledger** (dependência) precisa ter runtime ativo no seu `staging/` — a candidata do
+  wallet vai consumir o ledger compartilhado.
+- O **checkout** (client) precisa ter digest produtivo em `gitops-production` — o client de
+  regressão roda a versão produtiva do checkout.
+
+O staging compartilhado de cada serviço espelha a produção (mesmo digest). Usamos valores
+fictícios para a demo (num cenário real, vêm do `docker push`):
 
 ```bash
-# runtime compartilhado do wallet em staging (o wallet é client; precisa existir no mesh)
-printf 'image:\n  digest: sha256:wallet-staging-prod\n' > gitops-staging/wallet/staging/release.yaml
+# ledger: runtime compartilhado em staging = versão produtiva vigente
+LEDGER_PROD_DIGEST="sha256:ledger-prod-xyz"
+printf 'image:\n  digest: "%s"\n' "$LEDGER_PROD_DIGEST" > gitops-production/ledger/release.yaml
+printf 'image:\n  digest: %s\n'   "$LEDGER_PROD_DIGEST" > gitops-staging/ledger/staging/release.yaml
 
-# digest produtivo do wallet (lido pelo orquestrador ao provisionar o client)
-grep -q 'digest: "' gitops-production/wallet/release.yaml && echo "wallet prod OK" || \
-  printf 'image:\n  digest: "sha256:wallet-prod-abc"\n' > gitops-production/wallet/release.yaml
+# checkout: digest produtivo (o orquestrador lê para provisionar o client de regressão)
+# (já vem preenchido em gitops-production/checkout/release.yaml no onboarding de exemplo)
+grep digest gitops-production/checkout/release.yaml
 ```
 
 ### 2.2 Rodar o orquestrador (simula o Jenkins acionando o GitHub Actions)
+
+O Jenkins buildou uma nova imagem do **wallet** e aciona o orquestrador com o serviço e o
+digest da candidata:
 
 ```bash
 cd orchestrator
 GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
 GITOPS_PROD_PATH=$(pwd)/../gitops-production \
-python3 orchestrator.py --service ledger --digest sha256:ledger-v2-candidate
+python3 orchestrator.py --service wallet --digest sha256:wallet-v2-candidate
 cd ..
 ```
 
-**O que prova:** o orquestrador valida o onboarding, confirma que o `wallet` (client) tem
-digest produtivo, e provisiona a candidata do `ledger` + o client `wallet-ledger-client`.
+**O que prova:** o orquestrador valida o onboarding do wallet, confirma que a dependência
+`ledger` tem runtime compartilhado ativo e que o client `checkout` tem digest produtivo, e
+provisiona a candidata do `wallet` + o client `checkout-wallet-client`.
 
 **Esperado:** saída terminando em `✓ gitops-staging atualizado com sucesso`, com os logs:
 ```
-[writer] client atualizado: .../gitops-staging/wallet/client/for-ledger
-[writer] candidate atualizado: .../gitops-staging/ledger/candidate
+[writer] client atualizado: .../gitops-staging/checkout/client/for-wallet
+[writer] candidate atualizado: .../gitops-staging/wallet/candidate
 ```
 
 ### 2.3 Conferir os arquivos gerados
 
 ```bash
-echo "--- candidata do ledger ---"
-cat gitops-staging/ledger/candidate/values.yaml
-cat gitops-staging/ledger/candidate/release.yaml
-echo "--- client wallet-for-ledger ---"
-cat gitops-staging/wallet/client/for-ledger/values.yaml
-cat gitops-staging/wallet/client/for-ledger/release.yaml
+echo "--- candidata do wallet ---"
+cat gitops-staging/wallet/candidate/values.yaml
+cat gitops-staging/wallet/candidate/release.yaml
+echo "--- client checkout-for-wallet ---"
+cat gitops-staging/checkout/client/for-wallet/values.yaml
+cat gitops-staging/checkout/client/for-wallet/release.yaml
 ```
 
 **Esperado:**
-- `ledger/candidate/values.yaml` → `role: candidate` + `clients: [wallet-ledger-client]`
-- `ledger/candidate/release.yaml` → `digest: sha256:ledger-v2-candidate`
-- `wallet/client/for-ledger/values.yaml` → `role: client`, `target: ledger`, `istioInject: true`
-- `wallet/client/for-ledger/release.yaml` → o digest produtivo do wallet
+- `wallet/candidate/values.yaml` → `role: candidate` + `clients: [checkout-wallet-client]`
+- `wallet/candidate/release.yaml` → `digest: sha256:wallet-v2-candidate`
+- `checkout/client/for-wallet/values.yaml` → `role: client`, `target: wallet`, `istioInject: true`
+- `checkout/client/for-wallet/release.yaml` → o digest produtivo do checkout
 
 ### 2.4 Testar a validação de erro (dependência sem runtime)
 
@@ -165,7 +179,7 @@ Prova que o orquestrador falha de forma clara quando uma dependência compartilh
 tem runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver vazio:
 
 ```bash
-# garante o staging do ledger vazio
+# esvazia o staging do ledger (simula dependência sem runtime compartilhado)
 printf 'image:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
 
 cd orchestrator
@@ -173,6 +187,9 @@ GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
 GITOPS_PROD_PATH=$(pwd)/../gitops-production \
 python3 orchestrator.py --service wallet --digest sha256:wallet-v2-candidate ; echo "EXIT: $?"
 cd ..
+
+# restaura o runtime do ledger para seguir a demo
+printf 'image:\n  digest: %s\n' "sha256:ledger-prod-xyz" > gitops-staging/ledger/staging/release.yaml
 ```
 
 **Esperado:** erro acionável e `EXIT: 1`:
@@ -199,58 +216,60 @@ helm lint ./helm/service-chart --set namespace=payments
 ### 3.2 Staging SEM runtime → só o Service (host do mesh)
 
 ```bash
-helm template ledger ./helm/service-chart \
-  -f gitops-staging/ledger/values.yaml \
-  -f gitops-staging/ledger/staging/values.yaml \
-  -f gitops-staging/ledger/staging/release.yaml | grep -E "^kind:|  name:"
+helm template checkout ./helm/service-chart \
+  -f gitops-staging/checkout/values.yaml \
+  -f gitops-staging/checkout/staging/values.yaml \
+  -f gitops-staging/checkout/staging/release.yaml | grep -E "^kind:|  name:"
 ```
 
-**Esperado:** apenas `Service` chamado `ledger` (sem Deployment — digest vazio significa
-host presente no mesh, sem pods).
+**Esperado:** apenas `Service` chamado `checkout` (sem Deployment — digest vazio significa
+host presente no mesh, sem pods). É o caso de um serviço que existe no mesh mas não tem
+runtime compartilhado permanente.
 
-### 3.3 Staging COM runtime → Service + Deployment
+### 3.3 Staging COM runtime → Service + Deployment (ledger, dependência compartilhada)
 
 ```bash
 helm template ledger ./helm/service-chart \
   -f gitops-staging/ledger/values.yaml \
   -f gitops-staging/ledger/staging/values.yaml \
-  --set image.digest=sha256:ledger-staging-prod | grep -E "^kind:|  name:|image:"
+  --set image.digest=sha256:ledger-prod-xyz | grep -E "^kind:|  name:|image:"
 ```
 
-**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:ledger-staging-prod`.
+**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:ledger-prod-xyz`.
+É a dependência compartilhada que a candidata do wallet vai consumir.
 
-### 3.4 Candidata → Service + Deployment + VirtualService (o roteamento)
+### 3.4 Candidata (wallet) → Service + Deployment + VirtualService (o roteamento)
 
 ```bash
-helm template ledger-candidate ./helm/service-chart \
-  -f gitops-staging/ledger/values.yaml \
-  -f gitops-staging/ledger/candidate/values.yaml \
-  -f gitops-staging/ledger/candidate/release.yaml
+helm template wallet-candidate ./helm/service-chart \
+  -f gitops-staging/wallet/values.yaml \
+  -f gitops-staging/wallet/candidate/values.yaml \
+  -f gitops-staging/wallet/candidate/release.yaml
 ```
 
 **Esperado (os três recursos):**
-- `Service` e `Deployment` chamados `ledger-candidate`, imagem `@sha256:ledger-v2-candidate`
-- `VirtualService` `ledger-candidate-routes` com:
-  - host `ledger.payments.svc.cluster.local`
-  - match `sourceLabels: app: wallet-ledger-client` → destino `ledger-candidate...`
-  - rota de fallback → `ledger...`
+- `Service` e `Deployment` chamados `wallet-candidate`, imagem `@sha256:wallet-v2-candidate`
+- `VirtualService` `wallet-candidate-routes` com:
+  - host `wallet.payments.svc.cluster.local`
+  - match `sourceLabels: app: checkout-wallet-client` → destino `wallet-candidate...`
+  - rota de fallback → `wallet...`
 
 **Este é o coração da demo:** mostra que o tráfego do client de regressão
-(`wallet-ledger-client`) é desviado para a candidata, e todo o resto segue para o ledger
-compartilhado.
+(`checkout-wallet-client`) é desviado para a candidata, e todo o resto segue para o wallet
+compartilhado. É exatamente o cenário do slide 17 do PPT.
 
-### 3.5 Client de regressão → Service + Deployment + sidecar, SEM VirtualService
+### 3.5 Client de regressão (checkout) → Service + Deployment + sidecar, SEM VirtualService
 
 ```bash
-helm template wallet-ledger-client ./helm/service-chart \
-  -f gitops-staging/wallet/values.yaml \
-  -f gitops-staging/wallet/client/for-ledger/values.yaml \
-  -f gitops-staging/wallet/client/for-ledger/release.yaml | grep -E "^kind:|  name:|sidecar|  app:"
+helm template checkout-wallet-client ./helm/service-chart \
+  -f gitops-staging/checkout/values.yaml \
+  -f gitops-staging/checkout/client/for-wallet/values.yaml \
+  -f gitops-staging/checkout/client/for-wallet/release.yaml | grep -E "^kind:|  name:|sidecar|  app:"
 ```
 
 **Esperado:**
-- `Service` + `Deployment` chamados `wallet-ledger-client`
-- label `app: wallet-ledger-client` (o mesmo que o VirtualService da candidata usa no match)
+- `Service` + `Deployment` chamados `checkout-wallet-client`
+- label `app: checkout-wallet-client` (o mesmo que o VirtualService da candidata usa no match)
 - annotation `sidecar.istio.io/inject: "true"` (o client origina o desvio)
 - **nenhum** VirtualService (o client não gera VS)
 
@@ -261,16 +280,20 @@ helm template wallet-ledger-client ./helm/service-chart \
 **Objetivo:** provar o fechamento do ciclo — quando a candidata vai para produção, os
 efêmeros são removidos e os usos produtivos são atualizados.
 
+O wallet foi aprovado e deployado em produção. O `promote.py` é acionado com o novo
+digest produtivo do wallet:
+
 ```bash
 cd orchestrator
 GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
-python3 promote.py --service ledger --digest sha256:ledger-v2-prod
+python3 promote.py --service wallet --digest sha256:wallet-v2-prod
 cd ..
 ```
 
 **Esperado:**
-- Atualização: se o staging do ledger tiver runtime, seu digest é atualizado para o novo
-- Limpeza: `✓ removido: .../ledger/candidate` e `✓ removido: .../wallet/client/for-ledger`
+- Atualização: o `wallet/staging/release.yaml` (runtime compartilhado) é atualizado para o
+  novo digest produtivo — o compartilhado passa a espelhar a nova produção
+- Limpeza: `✓ removido: .../wallet/candidate` e `✓ removido: .../checkout/client/for-wallet`
 
 ### Conferir o estado final
 
@@ -286,8 +309,9 @@ staging) — todas as pastas efêmeras (`candidate/`, `client/for-*/`) foram rem
 ## Restaurar o estado de onboarding limpo (após a demo)
 
 ```bash
-printf '# Imagem da versão produtiva vigente — atualizada após cada deploy em produção\nimage:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
-printf '# Imagem da versão produtiva vigente — atualizada após cada deploy em produção\nimage:\n  digest: ""\n' > gitops-staging/wallet/staging/release.yaml
+for svc in wallet ledger checkout; do
+  printf '# Imagem da versão produtiva vigente — atualizada após cada deploy em produção\nimage:\n  digest: ""\n' > gitops-staging/$svc/staging/release.yaml
+done
 git checkout -- gitops-production/   # restaura digests de produção de exemplo
 git status --short                   # deve mostrar árvore limpa (ou só o que você quer manter)
 ```
