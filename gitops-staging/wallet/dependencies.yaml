@@ -1,0 +1,4 @@
+app: wallet
+dependencyMode: shared-preferred
+dependencies:
+  - ledger

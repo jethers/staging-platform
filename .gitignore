@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Go binaries
+services/ledger/ledger
+services/wallet/wallet
+
+# Apresentações
+*.pptx
+
+# Helm
+*.tgz
+
+# OS
+.DS_Store
+Thumbs.db

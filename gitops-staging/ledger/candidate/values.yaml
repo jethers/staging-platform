@@ -1,0 +1,7 @@
+replicaCount: 1
+virtualService:
+  candidateHost: ledger-candidate.payments.svc.cluster.local
+  clientRoutes:
+  - sourceApp: wallet-ledger-client
+  enabled: true
+  host: ledger.payments.svc.cluster.local

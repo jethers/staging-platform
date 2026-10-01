@@ -1,0 +1,6 @@
+replicaCount: 1
+virtualService:
+  candidateHost: wallet-candidate.payments.svc.cluster.local
+  clientRoutes: []
+  enabled: false
+  host: wallet.payments.svc.cluster.local

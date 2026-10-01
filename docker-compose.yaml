@@ -1,0 +1,32 @@
+services:
+  ledger:
+    build:
+      context: ./services/ledger
+    ports:
+      - "8081:8080"
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  wallet:
+    build:
+      context: ./services/wallet
+    ports:
+      - "8082:8080"
+    environment:
+      - PORT=8080
+      - LEDGER_URL=http://ledger:8080
+    depends_on:
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

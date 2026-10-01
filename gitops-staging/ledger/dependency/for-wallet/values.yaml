@@ -1,0 +1,2 @@
+# Overrides para instância dedicada do ledger como dependência do candidate wallet (efêmera)
+replicaCount: 1

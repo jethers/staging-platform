@@ -1,0 +1,31 @@
+name: ledger
+
+image:
+  repository: staging-platform/ledger
+  tag: latest
+  digest: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8080
+  type: ClusterIP
+
+env:
+  - name: PORT
+    value: "8080"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80

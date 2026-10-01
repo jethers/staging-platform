@@ -1,0 +1,2 @@
+# Overrides para instância dedicada do wallet como dependência do candidate checkout (efêmera)
+replicaCount: 1

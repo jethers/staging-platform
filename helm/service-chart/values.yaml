@@ -1,0 +1,61 @@
+# Nome do serviço — usado em labels, nomes de recursos e seletores
+name: my-service
+
+image:
+  # Repositório da imagem (ex.: gcr.io/my-project/my-service)
+  repository: my-service
+  # Tag da imagem. Ignorada quando digest está definido.
+  tag: latest
+  # Digest SHA-256 imutável. Quando definido, sobrescreve a tag.
+  # ex.: sha256:abc123...
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Número de réplicas desejadas
+replicaCount: 1
+
+service:
+  # Porta exposta pelo Service do Kubernetes
+  port: 8080
+  # ClusterIP | NodePort | LoadBalancer
+  type: ClusterIP
+
+# Variáveis de ambiente injetadas no container
+# Formato:
+#   env:
+#     - name: MY_VAR
+#       value: "my-value"
+env: []
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# Labels extras aplicados em todos os recursos
+extraLabels: {}
+
+virtualService:
+  # Habilitar apenas para deployments candidatos
+  enabled: false
+  # Host do serviço compartilhado (fallback para tráfego não originado de clients)
+  # ex.: wallet.payments.svc.cluster.local
+  host: ""
+  # Host do serviço candidato (destino das rotas dos clients)
+  # ex.: wallet-candidate.payments.svc.cluster.local
+  candidateHost: ""
+  # Lista de clients de regressão que devem ser roteados para a candidata
+  # Formato:
+  #   clientRoutes:
+  #     - sourceApp: ledger-wallet-client
+  #     - sourceApp: checkout-wallet-client
+  clientRoutes: []
