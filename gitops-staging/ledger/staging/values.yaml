@@ -1,3 +1,2 @@
-# Overrides para a instância compartilhada permanente do ledger
+# Overrides da instância compartilhada do ledger (só o que difere da base)
 role: staging
-replicaCount: 1

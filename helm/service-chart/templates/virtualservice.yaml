@@ -1,25 +1,35 @@
-{{- if .Values.virtualService.enabled }}
+{{- /*
+VirtualService do host do serviço candidato.
+Renderizado apenas para a candidata (role: candidate) que tem clients de regressão.
+Governa o host compartilhado (<name>.<namespace>.svc.cluster.local) e desvia para
+a candidata (<name>-candidate...) o tráfego originado de cada client de regressão.
+Tráfego de qualquer outra origem cai no fallback (host compartilhado).
+*/ -}}
+{{- if and (eq .Values.role "candidate") .Values.clients }}
+{{- $svc := .Values.name -}}
+{{- $ns := required "namespace é obrigatório no values.yaml do serviço" .Values.namespace -}}
+{{- $sharedHost := printf "%s.%s.svc.cluster.local" $svc $ns -}}
+{{- $candidateHost := printf "%s-candidate.%s.svc.cluster.local" $svc $ns -}}
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: {{ include "service-chart.fullname" . }}
+  name: {{ $svc }}-candidate-routes
+  namespace: {{ $ns }}
   labels:
     {{- include "service-chart.labels" . | nindent 4 }}
 spec:
   hosts:
-    - {{ .Values.virtualService.host }}
-  gateways:
-    - mesh
+    - {{ $sharedHost }}
   http:
-    {{- range .Values.virtualService.clientRoutes }}
+    {{- range .Values.clients }}
     - match:
         - sourceLabels:
-            app: {{ .sourceApp }}
+            app: {{ . }}
       route:
         - destination:
-            host: {{ $.Values.virtualService.candidateHost }}
+            host: {{ $candidateHost }}
     {{- end }}
     - route:
         - destination:
-            host: {{ .Values.virtualService.host }}
+            host: {{ $sharedHost }}
 {{- end }}

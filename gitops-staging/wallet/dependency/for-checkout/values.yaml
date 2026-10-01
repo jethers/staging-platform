@@ -1,4 +1,0 @@
-# Overrides para instância dedicada do wallet como dependência do candidate checkout (efêmera)
-role: dependency
-target: checkout
-replicaCount: 1

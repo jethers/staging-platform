@@ -1,8 +1,9 @@
-{{- if .Values.autoscaling.enabled }}
+{{- if and .Values.autoscaling.enabled .Values.image.digest }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "service-chart.fullname" . }}
+  namespace: {{ required "namespace é obrigatório no values.yaml do serviço" .Values.namespace }}
   labels:
     {{- include "service-chart.labels" . | nindent 4 }}
 spec:

@@ -1,3 +1,2 @@
 app: ledger
-dependencyMode: shared-preferred
 dependencies: []

@@ -1,4 +1,0 @@
-# Overrides para a instância candidata do ledger (efêmera)
-# O orquestrador adiciona 'role: candidate' e a seção 'virtualService' automaticamente
-role: candidate
-replicaCount: 1

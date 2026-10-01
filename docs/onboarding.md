@@ -1,6 +1,6 @@
 # Onboarding de Serviços na Plataforma
 
-Guia para integrar um novo serviço (ou um serviço existente) à plataforma de homologação.
+Guia para integrar um novo serviço (ou um serviço existente) à plataforma de homologação. Todos os manifestos ficam no monorepo `gitops-staging`.
 
 ---
 
@@ -8,31 +8,49 @@ Guia para integrar um novo serviço (ou um serviço existente) à plataforma de 
 
 Um serviço que ainda não existe em produção.
 
-### 1. Criar os manifestos de homologação
-
-Dentro do repositório do serviço, criar a pasta `homologation/`:
+### 1. Criar a estrutura base no gitops-staging
 
 ```
-<service>/
-  homologation/
-    dependencies.yaml
-    clients.yaml
+gitops-staging/
+  <service>/
+    values.yaml            # configuração base
+    dependencies.yaml      # dependências do serviço
+    clients.yaml           # clients de regressão do serviço
+    staging/
+      values.yaml          # role: staging
+      release.yaml         # image.digest vazio (só Service, sem runtime)
 ```
 
-**`dependencies.yaml`** — lista os serviços dos quais este serviço depende:
+> O onboarding cria apenas a parte **permanente**: `values.yaml` base, `dependencies.yaml`, `clients.yaml` e a pasta `staging/`. A pasta `candidate/` **não** faz parte do onboarding — é criada pelo orquestrador quando a homologação é disparada, e removida na limpeza (efêmera). As pastas `dependency/for-*/` e `client/for-*/` também são criadas pelo orquestrador.
+>
+> O orquestrador não cria a config permanente — se faltar quando o serviço for usado (como candidata, dependência ou client), ele falha com erro "serviço não onboardado" (ver decisões 18 e 20). A pasta `staging/` garante o Service (host no mesh) mesmo sem runtime; deixe `release.yaml` com digest vazio se não houver versão compartilhada.
+
+**`values.yaml`** (base) — define nome, namespace, imagem e config comum:
+
+```yaml
+name: wallet
+namespace: payments
+image:
+  repository: <org>/wallet
+  pullPolicy: IfNotPresent
+service:
+  port: 8080
+env:
+  - name: PORT
+    value: "8080"
+```
+
+**`dependencies.yaml`** — serviços dos quais este depende (lista simples; no MVP todas são compartilhadas, ver decisão 19):
 
 ```yaml
 app: wallet
-dependencyMode: shared-preferred
 dependencies:
   - ledger
-  - antifraud
 ```
 
-- `dependencyMode: shared-preferred` — usa as instâncias compartilhadas (`staging`) por padrão
-- Para forçar instância dedicada de uma dependência, use `dependencyMode: dedicated`
+A candidata chama cada dependência no host compartilhado. Cada dependência precisa estar onboardada e com runtime ativo no seu `staging/` (digest preenchido), para a candidata consumi-la.
 
-**`clients.yaml`** — lista os serviços que chamam este serviço (clientes de regressão):
+**`clients.yaml`** — serviços que chamam este (clientes de regressão):
 
 ```yaml
 app: wallet
@@ -40,34 +58,22 @@ regressionClients:
   - checkout
 ```
 
-### 2. Criar os arquivos GitOps de homologação
+### 2. Garantir que as dependências e clients estão onboardados
 
-No repositório `gitops-staging`, criar a estrutura de pastas do serviço:
+A pasta `client/for-<candidate>/` **não** é criada manualmente no onboarding — o orquestrador a gera durante o setup da homologação (com `role`, `target` e o digest produtivo). O mesmo vale para a pasta `candidate/`.
 
-```
-gitops-staging/
-  <service>/
-    values.yaml                    # configuração base
-    staging/
-      values.yaml
-      release.yaml                 # deixar image.digest vazio
-    candidate/
-      values.yaml
-      release.yaml                 # deixar image.digest vazio
-```
+O que o onboarding precisa garantir é que **cada serviço citado** como dependência (no `dependencies.yaml`) ou como client (no `clients.yaml`) **esteja ele próprio onboardado** — ou seja, tenha seu `values.yaml` base e sua pasta `staging/` (passo 1). Exemplo para o `wallet`:
 
-Criar as pastas `dependency/for-<service>` e `client/for-<service>` apenas para os serviços declarados em `dependencies.yaml` e `clients.yaml`.
+- `ledger` (dependência do wallet) → o `ledger` precisa ter `gitops-staging/ledger/values.yaml` + `gitops-staging/ledger/staging/` com runtime ativo
+- `checkout` (client do wallet) → o `checkout` precisa ter `gitops-staging/checkout/values.yaml` + `gitops-staging/checkout/staging/`
+
+Além disso, cada um precisa ter o digest produtivo registrado no `gitops-production` (ver seção "Serviço existente" e decisão 5).
 
 ### 3. Primeiro ciclo de homologação
 
-Com o repositório configurado, basta acionar o CI normalmente. O orquestrador irá:
+Com a estrutura pronta, acionar o CI normalmente. O orquestrador provisiona a candidata e os clients com os digests produtivos vigentes, a pipeline roda os testes e, se aprovados, abre o PR de promoção.
 
-1. Provisionar a candidata com o digest gerado pelo CI
-2. Provisionar as dependências com os digests produtivos vigentes
-3. Executar os testes de integração
-4. Abrir PR de promoção se os testes passarem
-
-Após o primeiro deploy em produção, o `gitops-production` será atualizado automaticamente e o serviço estará disponível como dependência para outros serviços.
+Após o primeiro deploy em produção, o `gitops-production` é atualizado automaticamente e o serviço fica disponível como dependência para outros.
 
 ---
 
@@ -77,14 +83,14 @@ Um serviço que já está em produção mas ainda não usa a plataforma.
 
 ### 1. Registrar o digest atual em produção
 
-No repositório `gitops-production`, criar (ou atualizar) o `release.yaml` do serviço com o digest da imagem atualmente em produção:
+No `gitops-production`, criar/atualizar o `release.yaml` do serviço com o digest da imagem atualmente em produção:
 
 ```yaml
 image:
   digest: sha256:<digest-atual>
 ```
 
-Para descobrir o digest da imagem em execução:
+Para descobrir o digest em execução:
 
 ```bash
 # Via kubectl
@@ -94,32 +100,32 @@ kubectl get deployment <service> -n <namespace> -o jsonpath='{.spec.template.spe
 gcloud artifacts docker images describe <registry>/<project>/<repo>/<image>:<tag>
 ```
 
-> Este passo é feito **uma única vez** durante o onboarding. A partir do próximo deploy em produção, o `gitops-production` será atualizado automaticamente pelo pipeline.
+> Feito **uma única vez** no onboarding. A partir do próximo deploy em produção, o `gitops-production` é atualizado automaticamente.
 
 ### 2. Seguir os passos do serviço novo
 
-Após registrar o digest, seguir os mesmos passos 1 e 2 descritos na seção anterior.
+Após registrar o digest, seguir os passos 1 e 2 da seção anterior.
 
 ---
 
 ## Erros comuns
 
-### Dependência sem digest em produção
+### Dependência/client sem digest em produção
 
 ```
-ERROR: dependency "ledger" has no production digest in gitops-production/ledger/release.yaml
+[validator] Digest de produção vazio para dependência 'ledger'
 ```
 
-**Causa:** o serviço `ledger` ainda não tem um digest registrado em `gitops-production`.
+**Causa:** o serviço ainda não tem digest registrado em `gitops-production`.
 
-**Solução:** registrar o digest manualmente (serviço existente) ou aguardar o primeiro deploy em produção do `ledger` (serviço novo).
+**Solução:** registrar o digest manualmente (serviço existente) ou aguardar o primeiro deploy em produção (serviço novo). Toda dependência precisa ter passado pela pipeline ou sido registrada no onboarding — nada chega a ser dependência sem estar em produção.
 
-### Candidata já em homologação
+### Serviço não onboardado (values.yaml base ou staging ausente)
 
 ```
-ERROR: service "wallet" already has an active candidate in gitops-staging/wallet/candidate/release.yaml
+[validator] Serviço 'ledger' não onboardado: values.yaml base ou staging/ ausente
 ```
 
-**Causa:** já existe um ciclo de homologação em andamento para este serviço.
+**Causa:** um serviço citado como dependência ou client não tem o `values.yaml` base e/ou a pasta `staging/`. O orquestrador não cria essa estrutura base (ver decisões 18 e 20) — ele só cria as pastas `candidate/` e `client/for-<candidate>/` durante o setup, mas isso exige que o serviço-alvo já esteja onboardado.
 
-**Solução:** aguardar o ciclo atual terminar (deploy em produção ou cancelamento manual) antes de iniciar um novo.
+**Solução:** onboardar o serviço — criar `<service>/values.yaml` (base) e `<service>/staging/` (com `values.yaml` role: staging e `release.yaml`).

@@ -1,10 +1,12 @@
-# Base values — comuns a todos os ambientes do wallet
+# Base values — identidade do serviço, comum a todas as situações (decisão 26)
 name: wallet
 namespace: payments
 
 image:
   repository: staging-platform/wallet
   pullPolicy: IfNotPresent
+
+replicaCount: 1
 
 service:
   port: 8080
@@ -13,6 +15,8 @@ service:
 env:
   - name: PORT
     value: "8080"
+  # O wallet chama o ledger pelo host do Service. Em homologação, o Istio
+  # roteia de forma transparente (sem precisar de URL específica da candidata).
   - name: LEDGER_URL
     value: "http://ledger:8080"
 

@@ -1,18 +1,23 @@
 # Nome do serviço — usado em labels, nomes de recursos e seletores
 name: my-service
 
-# Namespace Kubernetes do serviço
-namespace: default
+# Namespace Kubernetes do serviço — obrigatório, deve vir do values.yaml do serviço.
+# Sem default: a renderização falha se não for definido (evita provisionar no namespace errado).
+namespace: ""
 
 # Role do deployment — define o sufixo do nome do recurso:
-#   staging    → <name>              (compartilhado, permanente)
-#   candidate  → <name>-candidate    (versão em homologação)
-#   dependency → <name>-<target>-dependency  (dependência dedicada)
+#   staging    → <name>                      (compartilhado, permanente)
+#   candidate  → <name>-candidate            (versão em homologação)
 #   client     → <name>-<target>-client      (cliente de regressão)
+#   dependency → <name>-<target>-dependency  (reservado para evolução futura; não usado no MVP)
 role: staging
-# Serviço candidato alvo — obrigatório para roles dependency e client
-# ex.: para wallet como dependency do checkout, target: checkout
+# Serviço candidato alvo — obrigatório para role client (e dependency, futuro)
+# ex.: para checkout como client do wallet, target: wallet
 target: ""
+
+# Injeção do sidecar Istio — setada pelo orquestrador (ver decisão 11).
+# No MVP: true apenas para clients (que originam o desvio para a candidata).
+istioInject: false
 
 image:
   # Repositório da imagem (ex.: gcr.io/my-project/my-service)
@@ -57,18 +62,12 @@ autoscaling:
 # Labels extras aplicados em todos os recursos
 extraLabels: {}
 
-virtualService:
-  # Habilitar apenas para deployments candidatos
-  enabled: false
-  # Host do serviço compartilhado (fallback para tráfego não originado de clients)
-  # ex.: wallet.payments.svc.cluster.local
-  host: ""
-  # Host do serviço candidato (destino das rotas dos clients)
-  # ex.: wallet-candidate.payments.svc.cluster.local
-  candidateHost: ""
-  # Lista de clients de regressão que devem ser roteados para a candidata
-  # Formato:
-  #   clientRoutes:
-  #     - sourceApp: ledger-wallet-client
-  #     - sourceApp: checkout-wallet-client
-  clientRoutes: []
+# Lista de clients de regressão desta candidata (preenchida pelo orquestrador no
+# candidate/values.yaml a partir do clients.yaml). Cada item é o label 'app' do
+# pod client que deve ser roteado para a candidata.
+# O VirtualService só é renderizado quando role=candidate e esta lista é não-vazia.
+# Formato:
+#   clients:
+#     - checkout-wallet-client
+#     - payments-wallet-client
+clients: []

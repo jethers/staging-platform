@@ -1,10 +1,12 @@
-# Base values — comuns a todos os ambientes do ledger
+# Base values — identidade do serviço, comum a todas as situações (decisão 26)
 name: ledger
 namespace: payments
 
 image:
   repository: staging-platform/ledger
   pullPolicy: IfNotPresent
+
+replicaCount: 1
 
 service:
   port: 8080

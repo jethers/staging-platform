@@ -5,12 +5,13 @@ orchestrator.py — orquestrador de homologação integrada.
 Uso:
   python orchestrator.py --service <service> --digest <sha256:...>
 
-Variáveis de ambiente obrigatórias (configuradas no Helm chart do orquestrador):
+Variáveis de ambiente:
   SERVICE              nome do serviço (pode ser passado via --service)
   DIGEST               digest SHA-256 da imagem candidata (pode ser passado via --digest)
-  GITOPS_STAGING_PATH  path local do repositório gitops-staging
-  GITOPS_PROD_PATH     path local do repositório gitops-production
-  NAMESPACE            namespace Kubernetes dos serviços
+  GITOPS_STAGING_PATH  path local do repositório gitops-staging (obrigatória)
+  GITOPS_PROD_PATH     path local do repositório gitops-production (obrigatória)
+
+O namespace não é entrada — é lido do values.yaml base de cada serviço.
 """
 
 import argparse
@@ -18,13 +19,12 @@ import os
 import sys
 
 from manifest import load_dependencies, load_clients, load_namespace
-from validator import validate_candidate, validate_dependency, validate_client
-from writer import (
-    write_candidate_release,
-    write_dependency_release,
-    write_client_release,
-    write_candidate_values,
+from validator import (
+    validate_onboarding,
+    validate_dependency_shared,
+    validate_client_prod_digest,
 )
+from writer import write_candidate, write_client
 
 
 def get_env(name: str, required: bool = True) -> str:
@@ -88,42 +88,31 @@ def run(service: str, digest: str) -> None:
     print(f"  dependências : {dependencies or '(nenhuma)'}")
     print(f"  clients      : {clients or '(nenhum)'}")
 
-    # 2. Valida candidata
-    print("\n[2/4] Validando estrutura do gitops-staging...")
-    validate_candidate(gitops_staging, service)
-    print(f"  ✓ pasta candidate/{service} encontrada")
+    # 2. Valida onboarding do serviço candidato
+    print("\n[2/4] Validando onboarding e pré-requisitos...")
+    validate_onboarding(gitops_staging, service)
+    print(f"  ✓ serviço '{service}' onboardado (values base + staging)")
 
-    # Valida dependências e coleta digests produtivos
-    dep_digests: dict[str, str] = {}
+    # Dependências são compartilhadas (MVP): validar runtime ativo no staging de cada uma
     for dep in dependencies:
-        dep_digests[dep] = validate_dependency(
-            gitops_staging, gitops_production, service, dep
-        )
-        print(f"  ✓ dependência '{dep}' validada — digest: {dep_digests[dep][:20]}...")
+        validate_dependency_shared(gitops_staging, dep)
+        print(f"  ✓ dependência compartilhada '{dep}' com runtime ativo")
 
-    # Valida clients e coleta digests produtivos
+    # Clients: validar onboarding e coletar digest produtivo
     client_digests: dict[str, str] = {}
     for client in clients:
-        client_digests[client] = validate_client(
-            gitops_staging, gitops_production, service, client
-        )
+        validate_onboarding(gitops_staging, client)
+        client_digests[client] = validate_client_prod_digest(gitops_production, client)
         print(f"  ✓ client '{client}' validado — digest: {client_digests[client][:20]}...")
 
-    # 3. Escreve release.yaml da candidata
-    print("\n[3/4] Atualizando gitops-staging...")
-    write_candidate_release(gitops_staging, service, digest)
-
-    # Escreve release.yaml das dependências
-    for dep, dep_digest in dep_digests.items():
-        write_dependency_release(gitops_staging, service, dep, dep_digest)
-
-    # Escreve release.yaml dos clients
+    # 3. Cria/atualiza os clients de regressão (efêmeros)
+    print("\n[3/4] Provisionando clients de regressão...")
     for client, client_digest in client_digests.items():
-        write_client_release(gitops_staging, service, client, client_digest)
+        write_client(gitops_staging, service, client, client_digest)
 
-    # 4. Atualiza candidate/values.yaml com VirtualService
-    print("\n[4/4] Atualizando candidate/values.yaml com VirtualService...")
-    write_candidate_values(gitops_staging, service, namespace, clients)
+    # 4. Cria/atualiza a candidata (com a lista de clients para o VirtualService)
+    print("\n[4/4] Provisionando a candidata...")
+    write_candidate(gitops_staging, service, digest, clients)
 
     print(f"\n{'='*60}")
     print("✓ gitops-staging atualizado com sucesso.")

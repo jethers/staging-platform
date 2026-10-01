@@ -1,2 +1,5 @@
 app: wallet
+# Clients de regressão que testam a candidata do wallet.
+# Vazio no exemplo: para demonstrar roteamento client → candidata, use o
+# ledger como candidata (ledger/clients.yaml lista o wallet como client).
 regressionClients: []

@@ -5,6 +5,9 @@ Plataforma de homologação integrada para microsserviços. Serviços candidatos
 ## Documentação
 
 - [Arquitetura](docs/architecture.md) — visão geral da solução, componentes e fluxo
+- [Roteamento com Istio](docs/routing.md) — como o tráfego é desviado para candidatas e dependências dedicadas
+- [Argo CD e ApplicationSet](docs/argocd.md) — provisionamento, ciclo de vida via release.yaml e prune
+- [Pós-deploy](docs/post-deploy.md) — atualização e limpeza da homologação após deploy em produção
 - [Decisões de design](docs/decisions.md) — registro das principais decisões arquiteturais
 - [Onboarding](docs/onboarding.md) — como integrar um novo serviço na plataforma
 - [Orquestrador](docs/orchestrator.md) — como o orquestrador funciona
@@ -131,16 +134,27 @@ PORT=8082 LEDGER_URL=http://localhost:8081 go run .
 staging-platform/
   services/
     ledger/               # Serviço de saldo (Go)
-      homologation/
-        dependencies.yaml # Dependências do ledger
-        clients.yaml      # Clientes de regressão do ledger
     wallet/               # Serviço de carteira (Go)
-      homologation/
-        dependencies.yaml # Dependências do wallet (ledger)
-        clients.yaml      # Clientes de regressão do wallet
   helm/
     service-chart/        # Helm Chart genérico para qualquer serviço
-    values-ledger.yaml    # Values específicos do ledger
-    values-wallet.yaml    # Values específicos do wallet
+    values-ledger.yaml    # Values de exemplo do ledger
+    values-wallet.yaml    # Values de exemplo do wallet
+  gitops-staging/         # Monorepo de homologação (fonte de verdade)
+    <service>/
+      values.yaml         # config base (name, namespace, image, env)
+      dependencies.yaml   # dependências do serviço
+      clients.yaml        # clients de regressão do serviço
+      staging/            # instância compartilhada (role: staging)
+      candidate/          # versão em homologação (role: candidate)
+      dependency/for-*/   # dependências dedicadas por candidata
+      client/for-*/       # clients de regressão por candidata
+  gitops-production/      # Digests produtivos por serviço (repo separado em prod)
+    <service>/release.yaml
+  orchestrator/           # Scripts Python (setup e promote)
+    orchestrator.py       # setup da candidata
+    manifest.py / validator.py / writer.py
+  docs/                   # Documentação de arquitetura e decisões
   docker-compose.yaml
 ```
+
+> Os manifestos de homologação (`dependencies.yaml`, `clients.yaml`) ficam no `gitops-staging`, não dentro de `services/`. Isso permite que o CD leia tudo de um único repositório. Ver [arquitetura](docs/architecture.md).

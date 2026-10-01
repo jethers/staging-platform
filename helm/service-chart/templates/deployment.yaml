@@ -1,7 +1,9 @@
+{{- if .Values.image.digest }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "service-chart.fullname" . }}
+  namespace: {{ required "namespace é obrigatório no values.yaml do serviço" .Values.namespace }}
   labels:
     {{- include "service-chart.labels" . | nindent 4 }}
 spec:
@@ -15,6 +17,10 @@ spec:
     metadata:
       labels:
         {{- include "service-chart.selectorLabels" . | nindent 8 }}
+      {{- if .Values.istioInject }}
+      annotations:
+        sidecar.istio.io/inject: "true"
+      {{- end }}
     spec:
       containers:
         - name: {{ .Values.name }}
@@ -42,3 +48,4 @@ spec:
               port: http
             initialDelaySeconds: 3
             periodSeconds: 5
+{{- end }}

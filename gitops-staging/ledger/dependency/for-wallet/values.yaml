@@ -1,4 +1,0 @@
-# Overrides para instância dedicada do ledger como dependência do candidate wallet (efêmera)
-role: dependency
-target: wallet
-replicaCount: 1
