@@ -1,0 +1,31 @@
+# Application — runtime compartilhado (staging) do ledger
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ledger-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:jethers/staging-platform.git
+    targetRevision: main
+    path: helm/service-chart
+    helm:
+      parameters:
+        - name: namespace
+          value: payments
+      valueFiles:
+        - ../../gitops-staging/ledger/values.yaml
+        - ../../gitops-staging/ledger/staging/values.yaml
+        - ../../gitops-staging/ledger/staging/release.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

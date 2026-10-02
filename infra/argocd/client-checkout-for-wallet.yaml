@@ -1,0 +1,36 @@
+# Application — client de regressão checkout→wallet (efêmero)
+#
+# Aplique APÓS o orquestrador provisionar
+# gitops-staging/checkout/client/for-wallet/.
+# Renderiza Service + Deployment com sidecar (app: checkout-wallet-client),
+# cujo tráfego o VirtualService da candidata desvia para wallet-candidate.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-wallet-client
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:jethers/staging-platform.git
+    targetRevision: main
+    path: helm/service-chart
+    helm:
+      parameters:
+        - name: namespace
+          value: payments
+      valueFiles:
+        - ../../gitops-staging/checkout/values.yaml
+        - ../../gitops-staging/checkout/client/for-wallet/values.yaml
+        - ../../gitops-staging/checkout/client/for-wallet/release.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
