@@ -3,7 +3,7 @@ name: wallet
 namespace: payments
 
 image:
-  repository: southamerica-east1-docker.pkg.dev/staging-platform-510420/docker-images/wallet
+  repository: us-central1-docker.pkg.dev/staging-platform-510420/docker-images/wallet
   pullPolicy: IfNotPresent
 
 replicaCount: 1

@@ -3,7 +3,7 @@ name: ledger
 namespace: payments
 
 image:
-  repository: southamerica-east1-docker.pkg.dev/staging-platform-510420/docker-images/ledger
+  repository: us-central1-docker.pkg.dev/staging-platform-510420/docker-images/ledger
   pullPolicy: IfNotPresent
 
 replicaCount: 1

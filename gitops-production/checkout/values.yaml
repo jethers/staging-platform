@@ -3,7 +3,7 @@ name: checkout
 namespace: payments
 
 image:
-  repository: southamerica-east1-docker.pkg.dev/staging-platform-510420/docker-images/checkout
+  repository: us-central1-docker.pkg.dev/staging-platform-510420/docker-images/checkout
   pullPolicy: IfNotPresent
 
 replicaCount: 2

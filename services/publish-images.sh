@@ -20,7 +20,7 @@
 set -euo pipefail
 
 PROJECT_ID="staging-platform-510420"
-REGION="southamerica-east1"
+REGION="us-central1"
 REPO="docker-images"
 REGISTRY="${REGION}-docker.pkg.dev"
 BASE="${REGISTRY}/${PROJECT_ID}/${REPO}"
