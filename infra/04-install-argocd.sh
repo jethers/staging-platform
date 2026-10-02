@@ -10,7 +10,7 @@
 #   ./04-install-argocd.sh
 #
 # Após instalar, cadastre a deploy key (infra/03-deploy-key.md, passo 3) e
-# aplique as Applications (infra/argocd/).
+# aplique o ApplicationSet (infra/argocd/applicationset.yaml).
 
 set -euo pipefail
 
@@ -43,4 +43,4 @@ echo "   depois abra https://localhost:8080  (usuário: admin)"
 echo
 echo " Próximos passos:"
 echo "   1. Cadastrar a deploy key (infra/03-deploy-key.md, passo 3)"
-echo "   2. Aplicar as Applications: kubectl apply -f infra/argocd/"
+echo "   2. Aplicar o ApplicationSet: kubectl apply -f infra/argocd/applicationset.yaml"

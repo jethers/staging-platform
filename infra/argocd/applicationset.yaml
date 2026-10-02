@@ -1,0 +1,62 @@
+# ApplicationSet — descobre automaticamente os papéis da homologação.
+#
+# Usa o git FILE generator com o glob gitops-staging/**/release.yaml: cada
+# release.yaml marca uma pasta de papel, em qualquer profundidade:
+#   gitops-staging/<svc>/staging/release.yaml            → runtime compartilhado
+#   gitops-staging/<svc>/candidate/release.yaml          → candidata (efêmera)
+#   gitops-staging/<svc>/client/for-<tgt>/release.yaml   → client (efêmero)
+#
+# Quando o orquestrador cria uma pasta nova (com seu release.yaml), o
+# ApplicationSet gera a Application correspondente; quando o promote remove a
+# pasta, o ApplicationSet faz prune da Application. Sem manifesto manual por demo.
+#
+# Variáveis do file generator usadas:
+#   {{.path.path}}            caminho da pasta do papel (ex: gitops-staging/wallet/candidate)
+#   {{index .path.segments 1}}  o serviço base (2º segmento: wallet/ledger/checkout)
+#   {{normalizePath .path.path}} usado para derivar um nome único e DNS-safe
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: homologacao
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: git@github.com:jethers/staging-platform.git
+        revision: main
+        files:
+          - path: "gitops-staging/**/release.yaml"
+  template:
+    metadata:
+      # nome único por papel: troca '/' por '-' no caminho da pasta.
+      # ex: gitops-staging/wallet/candidate  → gitops-staging-wallet-candidate
+      name: "{{ .path.path | replace \"/\" \"-\" }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: git@github.com:jethers/staging-platform.git
+        targetRevision: main
+        path: helm/service-chart
+        helm:
+          parameters:
+            - name: namespace
+              value: payments
+          # 3 value files: base do serviço + values do papel + release do papel.
+          # Caminhos relativos ao diretório do chart (helm/service-chart).
+          valueFiles:
+            - "../../{{ index .path.segments 1 | printf \"gitops-staging/%s/values.yaml\" }}"
+            - "../../{{ .path.path }}/values.yaml"
+            - "../../{{ .path.path }}/release.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: payments
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false

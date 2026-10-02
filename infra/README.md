@@ -35,15 +35,19 @@ gcloud container clusters get-credentials staging-platform \
 Ver `03-deploy-key.md`: gerar chave, cadastrar deploy key no GitHub, criar o
 Secret `repo-staging-platform` no namespace `argocd`.
 
-### 5. Sincronizar o estado de repouso (runtime compartilhado dos 3 serviços)
+### 5. Aplicar o ApplicationSet (descoberta automática dos papéis)
 ```bash
-kubectl apply -f argocd/staging-wallet.yaml
-kubectl apply -f argocd/staging-ledger.yaml
-kubectl apply -f argocd/staging-checkout.yaml
+kubectl apply -f argocd/applicationset.yaml
 ```
-O Argo clona o repo e aplica os manifestos. Confirme:
+O ApplicationSet usa um git file generator com o glob `gitops-staging/**/release.yaml`:
+cada `release.yaml` marca uma pasta de papel. No estado de repouso, ele descobre os
+3 runtimes compartilhados (`<svc>/staging/`) e cria uma Application para cada.
+Conforme o orquestrador cria/remove pastas efêmeras (candidate, client), o
+ApplicationSet gera/faz prune das Applications correspondentes — **sem manifesto
+manual por demo**. Confirme:
 ```bash
-kubectl get pods -n payments        # wallet, ledger, checkout (compartilhados)
+kubectl get applications -n argocd   # wallet/ledger/checkout staging
+kubectl get pods -n payments         # wallet, ledger, checkout (compartilhados)
 ```
 
 ### 6. Homologar a candidata do wallet (orquestrador → gitops → Argo)
@@ -54,13 +58,12 @@ git add gitops-staging && git commit -m "demo: homologa candidata do wallet" && 
 ```
 > Use o digest real da wallet v2.0.0 (publicado no Artifact Registry).
 
-Aplique as Applications efêmeras:
+O ApplicationSet detecta as novas pastas `wallet/candidate/` e
+`checkout/client/for-wallet/` (via o `release.yaml` de cada) e cria as Applications
+automaticamente. Confirme que subiram `wallet-candidate`, `checkout-wallet-client`
+e o VirtualService:
 ```bash
-kubectl apply -f argocd/candidate-wallet.yaml
-kubectl apply -f argocd/client-checkout-for-wallet.yaml
-```
-Confirme que subiram `wallet-candidate`, `checkout-wallet-client` e o VirtualService:
-```bash
+kubectl get applications -n argocd
 kubectl get pods,virtualservice -n payments
 ```
 
@@ -83,11 +86,9 @@ kubectl logs -n payments deploy/wallet --tail=20
 ./orchestrator/simulate-change.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 git add gitops-staging && git commit -m "demo: promove wallet" && git push
 ```
-O Argo faz prune das Applications efêmeras (pastas removidas pelo promote).
-Remova também as Applications efêmeras do cluster:
-```bash
-kubectl delete -f argocd/candidate-wallet.yaml -f argocd/client-checkout-for-wallet.yaml
-```
+O promote remove as pastas `candidate/` e `client/for-wallet/` do gitops. Após o
+push, o ApplicationSet detecta o sumiço dos `release.yaml` e faz prune das
+Applications efêmeras automaticamente — nada a remover manualmente no cluster.
 
 ---
 
