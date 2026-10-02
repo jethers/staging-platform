@@ -1,3 +1,2 @@
-# Imagem da versão produtiva vigente — atualizada após cada deploy em produção
 image:
-  digest: "sha256:2e2a9b1db24d158b85bdb1a3a8a8d196017240a3d4436d27982da0662ed5ae79"
+  digest: sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0

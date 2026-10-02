@@ -1,3 +1,0 @@
-role: client
-target: wallet
-istioInject: true
