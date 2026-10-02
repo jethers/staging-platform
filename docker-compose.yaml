@@ -30,3 +30,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  checkout:
+    build:
+      context: ./services/checkout
+    ports:
+      - "8083:8080"
+    environment:
+      - PORT=8080
+      - WALLET_URL=http://wallet:8080
+    depends_on:
+      wallet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
