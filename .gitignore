@@ -17,6 +17,10 @@ services/wallet/wallet
 # Helm
 *.tgz
 
+# Artefatos de teste (saída de helm template rodada à mão)
+test_*.yaml
+test_*.yml
+
 # OS
 .DS_Store
 Thumbs.db
