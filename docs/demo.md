@@ -1,9 +1,19 @@
 # Roteiro de Demo — Plataforma de Homologação Integrada
 
-Este documento é um passo a passo reproduzível para demonstrar a PoC até a
-renderização dos Helm charts. Cada etapa indica **o comando**, **o que ele prova**
-e **o resultado esperado**. Confirmada a renderização correta, o próximo passo é
-subir no GKE (fora do escopo deste roteiro).
+Este documento é um passo a passo reproduzível para demonstrar o **núcleo da plataforma**
+sem precisar de cluster: a lógica que o orquestrador aplica sobre o gitops e a renderização
+dos Helm charts que o Argo CD aplicaria. Cada etapa indica **o comando**, **o que ele prova**
+e **o resultado esperado**.
+
+O que esta demo prova:
+
+1. O **setup** do gitops (estado base: produção e staging espelhados)
+2. O **orquestrador** manipulando o gitops ao homologar uma candidata (via `simulate-jenkins.sh`)
+3. A **renderização dos templates** (helm template) para cada papel — incluindo o roteamento Istio
+4. O **promote** fechando o ciclo (via `simulate-change.sh`): atualização e limpeza
+
+Fora do escopo (próximo passo): subir no GKE com Istio + Argo CD e validar o roteamento
+em runtime. Os serviços **não** precisam rodar nesta demo.
 
 Todos os comandos assumem a raiz do projeto como diretório de trabalho:
 
@@ -17,8 +27,6 @@ cd ~/projetos/staging-platform
 
 | Ferramenta | Versão usada na validação | Para quê |
 |------------|---------------------------|----------|
-| Go | 1.26.x | compilar os serviços |
-| Docker | 29.x (com Compose) | buildar imagens e rodar os serviços localmente |
 | Helm | 3.22.x | renderizar os charts |
 | Python | 3.12.x | rodar o orquestrador |
 | PyYAML | 6.0.2 | dependência do orquestrador |
@@ -29,126 +37,71 @@ Instalar o PyYAML (se necessário):
 pip3 install -r orchestrator/requirements.txt --break-system-packages
 ```
 
-> No WSL/Windows, se o `docker compose build` falhar com `docker-credential-desktop.exe not found`,
-> remova a linha `"credsStore": "desktop.exe"` de `~/.docker/config.json`.
+---
+
+## Cenário (fiel ao PPT — fluxo `checkout → wallet → ledger`)
+
+Vamos homologar uma nova versão (candidata) do **wallet**:
+
+- **ledger** é dependência do wallet (compartilhada) — a candidata consome o ledger compartilhado
+- **checkout** é cliente de regressão do wallet — declarado em `gitops-staging/wallet/clients.yaml`
+
+Os três serviços estão onboardados no `gitops-staging` com runtime compartilhado.
 
 ---
 
-## Visão geral da demo
+## Bloco 0 — Setup do gitops (estado base)
 
-A demo tem três blocos:
+**Objetivo:** deixar o gitops no estado base esperado antes da homologação. Num cenário real,
+os digests produtivos chegam dos deploys em produção; aqui usamos valores fictícios e
+escrevemos o **mesmo digest** em produção e no staging compartilhado de cada serviço (o
+runtime compartilhado espelha a produção vigente).
 
-1. **Serviços rodando localmente** (Docker Compose) — prova que `wallet` chama `ledger`
-2. **Orquestrador** (setup e promote) — prova a lógica de provisionamento e limpeza no gitops
-3. **Renderização dos charts** (helm template) — prova que o gitops gera os manifestos
-   corretos para cada papel (staging, candidate, client), incluindo o roteamento Istio
+```bash
+./orchestrator/setup-gitops.sh
+```
+
+**O que prova:** os pré-requisitos do orquestrador estão satisfeitos — cada serviço tem
+runtime compartilhado ativo no staging (necessário para ser dependência) e digest produtivo
+registrado (necessário para ser client).
+
+**Esperado:** os 3 serviços (`wallet`, `ledger`, `checkout`) com digest produtivo em
+`gitops-production/<svc>/release.yaml` e o mesmo digest em `gitops-staging/<svc>/staging/release.yaml`.
+
+### Confirmar o estado base (opcional)
+
+```bash
+git status --short gitops-staging gitops-production
+```
+
+**Esperado:** só os seis `release.yaml` modificados (produção + staging dos três serviços).
 
 ---
 
-## Bloco 1 — Serviços rodando localmente
+## Bloco 1 — Orquestrador homologando a candidata do wallet
 
-**Objetivo:** mostrar os dois microsserviços e a comunicação `wallet → ledger`.
+**Objetivo:** provar a lógica da plataforma operando sobre o gitops. O `simulate-jenkins.sh`
+reproduz o Jenkins acionando o GitHub Actions (orquestrador) com o serviço e o digest da
+candidata.
 
-### 1.1 Subir os serviços
-
-```bash
-docker compose up -d --build
-```
-
-**Esperado:** containers `ledger` e `wallet` sobem e ficam `healthy`.
-
-### 1.2 Testar o ledger (serviço de saldo)
+### 1.1 Snapshot "antes"
 
 ```bash
-curl -s http://localhost:8081/health
-curl -s http://localhost:8081/balance/123
+git status --short gitops-staging
 ```
 
-**Esperado:**
-```json
-{"status":"ok","service":"ledger"}
-{"account":"123","balance":1150.5,"currency":"BRL","version":"dev"}
-```
+Guarde esse estado como referência. A única diferença após o Bloco 1 deve ser a criação das
+pastas efêmeras `wallet/candidate/` e `checkout/client/for-wallet/`.
 
-### 1.3 Testar o wallet (chama o ledger)
+### 1.2 Rodar a homologação (simula o Jenkins → orquestrador)
 
 ```bash
-curl -s http://localhost:8082/health
-curl -s http://localhost:8082/wallet/123
-```
-
-**Esperado:** o wallet responde com os dados enriquecidos, provando que chamou o ledger:
-```json
-{"status":"ok","service":"wallet"}
-{"account":"123","balance":1150.5,"currency":"BRL","wallet_status":"active","version":"dev"}
-```
-
-### 1.4 Ver os logs (a chamada wallet → ledger)
-
-```bash
-docker compose logs | grep -E "upstream=ledger|path=/wallet|path=/balance"
-```
-
-**Esperado:** uma requisição em `/wallet/123` gera log no wallet (requisição recebida +
-chamada upstream ao ledger) e no ledger (requisição recebida). O campo `version` aparece
-em cada log — será útil para distinguir candidata de produção na demo do cluster.
-
-### 1.5 Encerrar
-
-```bash
-docker compose down
-```
-
----
-
-## Bloco 2 — Orquestrador (setup e promote)
-
-**Objetivo:** provar a lógica da plataforma operando sobre o gitops, sem precisar de cluster.
-O orquestrador lê os manifestos de homologação e escreve a estrutura efêmera no `gitops-staging`.
-
-**Cenário (fiel ao PPT — fluxo `checkout → wallet → ledger`):** homologar uma nova versão
-(candidata) do **wallet**. O **ledger** é dependência do wallet (compartilhada); o **checkout**
-é cliente de regressão do wallet (declarado em `gitops-staging/wallet/clients.yaml`).
-
-### 2.1 Preparar o estado base
-
-Para homologar o wallet, o ambiente ao redor dele precisa estar na versão produtiva:
-
-- O **ledger** (dependência) precisa ter runtime ativo no seu `staging/` — a candidata do
-  wallet vai consumir o ledger compartilhado.
-- O **checkout** (client) precisa ter digest produtivo em `gitops-production` — o client de
-  regressão roda a versão produtiva do checkout.
-
-O staging compartilhado de cada serviço espelha a produção (mesmo digest). Usamos valores
-fictícios para a demo (num cenário real, vêm do `docker push`):
-
-```bash
-# ledger: runtime compartilhado em staging = versão produtiva vigente
-LEDGER_PROD_DIGEST="sha256:ledger-prod-xyz"
-printf 'image:\n  digest: "%s"\n' "$LEDGER_PROD_DIGEST" > gitops-production/ledger/release.yaml
-printf 'image:\n  digest: %s\n'   "$LEDGER_PROD_DIGEST" > gitops-staging/ledger/staging/release.yaml
-
-# checkout: digest produtivo (o orquestrador lê para provisionar o client de regressão)
-# (já vem preenchido em gitops-production/checkout/release.yaml no onboarding de exemplo)
-grep digest gitops-production/checkout/release.yaml
-```
-
-### 2.2 Rodar o orquestrador (simula o Jenkins acionando o GitHub Actions)
-
-O Jenkins buildou uma nova imagem do **wallet** e aciona o orquestrador com o serviço e o
-digest da candidata:
-
-```bash
-cd orchestrator
-GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
-GITOPS_PROD_PATH=$(pwd)/../gitops-production \
-python3 orchestrator.py --service wallet --digest sha256:wallet-v2-candidate
-cd ..
+./orchestrator/simulate-jenkins.sh wallet sha256:wallet-v2-candidate
 ```
 
 **O que prova:** o orquestrador valida o onboarding do wallet, confirma que a dependência
 `ledger` tem runtime compartilhado ativo e que o client `checkout` tem digest produtivo, e
-provisiona a candidata do `wallet` + o client `checkout-wallet-client`.
+então provisiona a candidata do `wallet` + o client `checkout-wallet-client`.
 
 **Esperado:** saída terminando em `✓ gitops-staging atualizado com sucesso`, com os logs:
 ```
@@ -156,7 +109,19 @@ provisiona a candidata do `wallet` + o client `checkout-wallet-client`.
 [writer] candidate atualizado: .../gitops-staging/wallet/candidate
 ```
 
-### 2.3 Conferir os arquivos gerados
+### 1.3 Conferir o que mudou no gitops (o "depois")
+
+```bash
+git status --short gitops-staging
+```
+
+**Esperado:** além dos release.yaml do setup, só duas pastas novas (untracked):
+```
+?? gitops-staging/checkout/client/
+?? gitops-staging/wallet/candidate/
+```
+
+### 1.4 Conferir os arquivos gerados
 
 ```bash
 echo "--- candidata do wallet ---"
@@ -171,25 +136,21 @@ cat gitops-staging/checkout/client/for-wallet/release.yaml
 - `wallet/candidate/values.yaml` → `role: candidate` + `clients: [checkout-wallet-client]`
 - `wallet/candidate/release.yaml` → `digest: sha256:wallet-v2-candidate`
 - `checkout/client/for-wallet/values.yaml` → `role: client`, `target: wallet`, `istioInject: true`
-- `checkout/client/for-wallet/release.yaml` → o digest produtivo do checkout
+- `checkout/client/for-wallet/release.yaml` → o digest produtivo do checkout (`sha256:checkout-prod-v1`)
 
-### 2.4 Testar a validação de erro (dependência sem runtime)
+### 1.5 Testar a validação de erro (dependência sem runtime)
 
-Prova que o orquestrador falha de forma clara quando uma dependência compartilhada não
-tem runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver vazio:
+Prova que o orquestrador falha de forma clara quando uma dependência compartilhada não tem
+runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver vazio:
 
 ```bash
 # esvazia o staging do ledger (simula dependência sem runtime compartilhado)
 printf 'image:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
 
-cd orchestrator
-GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
-GITOPS_PROD_PATH=$(pwd)/../gitops-production \
-python3 orchestrator.py --service wallet --digest sha256:wallet-v2-candidate ; echo "EXIT: $?"
-cd ..
+./orchestrator/simulate-jenkins.sh wallet sha256:wallet-v2-candidate ; echo "EXIT: $?"
 
 # restaura o runtime do ledger para seguir a demo
-printf 'image:\n  digest: %s\n' "sha256:ledger-prod-xyz" > gitops-staging/ledger/staging/release.yaml
+./orchestrator/setup-gitops.sh >/dev/null
 ```
 
 **Esperado:** erro acionável e `EXIT: 1`:
@@ -200,12 +161,12 @@ printf 'image:\n  digest: %s\n' "sha256:ledger-prod-xyz" > gitops-staging/ledger
 
 ---
 
-## Bloco 3 — Renderização dos Helm charts
+## Bloco 2 — Renderização dos Helm charts
 
 **Objetivo:** provar que o gitops gera os manifestos Kubernetes corretos para cada papel.
 Este é o resultado que o Argo CD aplicaria no cluster. Validamos sem cluster via `helm template`.
 
-### 3.1 Lint do chart
+### 2.1 Lint do chart
 
 ```bash
 helm lint ./helm/service-chart --set namespace=payments
@@ -213,32 +174,19 @@ helm lint ./helm/service-chart --set namespace=payments
 
 **Esperado:** `1 chart(s) linted, 0 chart(s) failed` (um aviso cosmético de ícone é ok).
 
-### 3.2 Staging SEM runtime → só o Service (host do mesh)
-
-```bash
-helm template checkout ./helm/service-chart \
-  -f gitops-staging/checkout/values.yaml \
-  -f gitops-staging/checkout/staging/values.yaml \
-  -f gitops-staging/checkout/staging/release.yaml | grep -E "^kind:|  name:"
-```
-
-**Esperado:** apenas `Service` chamado `checkout` (sem Deployment — digest vazio significa
-host presente no mesh, sem pods). É o caso de um serviço que existe no mesh mas não tem
-runtime compartilhado permanente.
-
-### 3.3 Staging COM runtime → Service + Deployment (ledger, dependência compartilhada)
+### 2.2 Staging COM runtime → Service + Deployment (ledger, dependência compartilhada)
 
 ```bash
 helm template ledger ./helm/service-chart \
   -f gitops-staging/ledger/values.yaml \
   -f gitops-staging/ledger/staging/values.yaml \
-  --set image.digest=sha256:ledger-prod-xyz | grep -E "^kind:|  name:|image:"
+  -f gitops-staging/ledger/staging/release.yaml | grep -E "^kind:|  name:|@sha256"
 ```
 
-**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:ledger-prod-xyz`.
-É a dependência compartilhada que a candidata do wallet vai consumir.
+**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:ledger-prod-v1`.
+É a dependência compartilhada que a candidata do wallet consome.
 
-### 3.4 Candidata (wallet) → Service + Deployment + VirtualService (o roteamento)
+### 2.3 Candidata (wallet) → Service + Deployment + VirtualService (o roteamento)
 
 ```bash
 helm template wallet-candidate ./helm/service-chart \
@@ -258,7 +206,7 @@ helm template wallet-candidate ./helm/service-chart \
 (`checkout-wallet-client`) é desviado para a candidata, e todo o resto segue para o wallet
 compartilhado. É exatamente o cenário do slide 17 do PPT.
 
-### 3.5 Client de regressão (checkout) → Service + Deployment + sidecar, SEM VirtualService
+### 2.4 Client de regressão (checkout) → Service + Deployment + sidecar, SEM VirtualService
 
 ```bash
 helm template checkout-wallet-client ./helm/service-chart \
@@ -275,60 +223,53 @@ helm template checkout-wallet-client ./helm/service-chart \
 
 ---
 
-## Bloco 4 — Limpeza pós-deploy (promote)
+## Bloco 3 — Promote (fechamento do ciclo na janela de change)
 
-**Objetivo:** provar o fechamento do ciclo — quando a candidata vai para produção, os
-efêmeros são removidos e os usos produtivos são atualizados.
-
-O wallet foi aprovado e deployado em produção. O `promote.py` é acionado com o novo
-digest produtivo do wallet:
+**Objetivo:** provar o fechamento do ciclo. O `simulate-change.sh` reproduz o passo final do
+Job 2 do GitHub Actions (executado na janela de change aprovada): após o PR de promoção ser
+mergeado e o rollout em produção concluir, o `promote.py` atualiza os usos produtivos e remove
+os efêmeros.
 
 ```bash
-cd orchestrator
-GITOPS_STAGING_PATH=$(pwd)/../gitops-staging \
-python3 promote.py --service wallet --digest sha256:wallet-v2-prod
-cd ..
+./orchestrator/simulate-change.sh wallet sha256:wallet-v2-prod
 ```
 
 **Esperado:**
-- Atualização: o `wallet/staging/release.yaml` (runtime compartilhado) é atualizado para o
-  novo digest produtivo — o compartilhado passa a espelhar a nova produção
+- Atualização: `wallet/staging/release.yaml` (runtime compartilhado) atualizado para o novo
+  digest produtivo — o compartilhado passa a espelhar a nova produção
 - Limpeza: `✓ removido: .../wallet/candidate` e `✓ removido: .../checkout/client/for-wallet`
 
 ### Conferir o estado final
 
 ```bash
-find gitops-staging -type f | sort
+git status --short gitops-staging
 ```
 
-**Esperado:** só a estrutura permanente de onboarding (values, dependencies, clients,
-staging) — todas as pastas efêmeras (`candidate/`, `client/for-*/`) foram removidas.
+**Esperado:** as pastas efêmeras (`candidate/`, `client/for-*/`) sumiram; resta só o
+`staging/release.yaml` do wallet com o novo digest (além do que o setup já havia mudado).
 
 ---
 
 ## Restaurar o estado de onboarding limpo (após a demo)
 
 ```bash
-for svc in wallet ledger checkout; do
-  printf '# Imagem da versão produtiva vigente — atualizada após cada deploy em produção\nimage:\n  digest: ""\n' > gitops-staging/$svc/staging/release.yaml
-done
-git checkout -- gitops-production/   # restaura digests de produção de exemplo
-git status --short                   # deve mostrar árvore limpa (ou só o que você quer manter)
+git checkout -- gitops-staging gitops-production
+git status --short                    # deve mostrar árvore limpa (só os scripts, se novos)
 ```
 
 ---
 
 ## Checklist de validação da demo
 
-- [ ] Serviços sobem e `wallet /wallet/123` retorna dados do ledger (Bloco 1)
-- [ ] Logs mostram a chamada `wallet → ledger` com `version` (Bloco 1.4)
-- [ ] Orquestrador provisiona candidata + client corretamente (Bloco 2.2–2.3)
-- [ ] Orquestrador falha com erro claro quando dependência não tem runtime (Bloco 2.4)
-- [ ] `helm lint` passa (Bloco 3.1)
-- [ ] Staging sem digest → só Service; com digest → Service + Deployment (Bloco 3.2–3.3)
-- [ ] Candidata gera VirtualService com rota do client + fallback (Bloco 3.4)
-- [ ] Client gera sidecar e nenhum VirtualService (Bloco 3.5)
-- [ ] Promote remove os efêmeros e atualiza usos produtivos (Bloco 4)
+- [ ] `setup-gitops.sh` deixa os 3 serviços com runtime e digest produtivo (Bloco 0)
+- [ ] `simulate-jenkins.sh wallet` provisiona candidata + client corretamente (Bloco 1.2–1.4)
+- [ ] `git status` após o Bloco 1 mostra só `candidate/` e `client/for-wallet/` novos (Bloco 1.3)
+- [ ] Orquestrador falha com erro claro quando dependência não tem runtime (Bloco 1.5)
+- [ ] `helm lint` passa (Bloco 2.1)
+- [ ] Staging com digest → Service + Deployment (Bloco 2.2)
+- [ ] Candidata gera VirtualService com rota do client + fallback (Bloco 2.3)
+- [ ] Client gera sidecar e nenhum VirtualService (Bloco 2.4)
+- [ ] `simulate-change.sh` remove os efêmeros e atualiza o runtime compartilhado (Bloco 3)
 
 Com todos os itens verificados, a lógica da plataforma está provada localmente. O próximo
 passo é provisionar o cluster GKE com Istio e Argo CD, e validar o roteamento em runtime
