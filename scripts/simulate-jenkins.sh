@@ -41,4 +41,4 @@ echo "   digest publicado no registry  : $DIGEST"
 echo "   acionando o orquestrador de homologação..."
 echo "────────────────────────────────────────────────────────────"
 
-python3 "$SCRIPT_DIR/orchestrator.py" --service "$SERVICE" --digest "$DIGEST"
+python3 "$REPO_ROOT/orchestrator/orchestrator.py" --service "$SERVICE" --digest "$DIGEST"

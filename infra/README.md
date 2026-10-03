@@ -63,7 +63,7 @@ kubectl get pods -n payments         # wallet, ledger, checkout (compartilhados)
 ### 6. Homologar a candidata do wallet (orquestrador → gitops → Argo)
 Rode o orquestrador localmente e faça commit/push (o Argo observa `main`):
 ```bash
-./orchestrator/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
+./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 git add gitops-staging && git commit -m "demo: homologa candidata do wallet" && git push
 ```
 > Use o digest real da wallet v2.0.0 (publicado no Artifact Registry).
@@ -93,7 +93,7 @@ kubectl logs -n payments deploy/wallet --tail=20
 
 ### 8. Promover (fecha o ciclo) — opcional
 ```bash
-./orchestrator/simulate-change.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
+./scripts/simulate-change.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 git add gitops-staging && git commit -m "demo: promove wallet" && git push
 ```
 O promote remove as pastas `candidate/` e `client/for-wallet/` do gitops. Após o

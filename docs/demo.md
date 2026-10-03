@@ -58,7 +58,7 @@ escrevemos o **mesmo digest** em produção e no staging compartilhado de cada s
 runtime compartilhado espelha a produção vigente).
 
 ```bash
-./orchestrator/setup-gitops.sh
+./scripts/setup-gitops.sh
 ```
 
 **O que prova:** os pré-requisitos do orquestrador estão satisfeitos — cada serviço tem
@@ -96,7 +96,7 @@ pastas efêmeras `wallet/candidate/` e `checkout/client/for-wallet/`.
 ### 1.2 Rodar a homologação (simula o Jenkins → orquestrador)
 
 ```bash
-./orchestrator/simulate-jenkins.sh wallet sha256:wallet-v2-candidate
+./scripts/simulate-jenkins.sh wallet sha256:wallet-v2-candidate
 ```
 
 **O que prova:** o orquestrador valida o onboarding do wallet, confirma que a dependência
@@ -147,10 +147,10 @@ runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver va
 # esvazia o staging do ledger (simula dependência sem runtime compartilhado)
 printf 'image:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
 
-./orchestrator/simulate-jenkins.sh wallet sha256:wallet-v2-candidate ; echo "EXIT: $?"
+./scripts/simulate-jenkins.sh wallet sha256:wallet-v2-candidate ; echo "EXIT: $?"
 
 # restaura o runtime do ledger para seguir a demo
-./orchestrator/setup-gitops.sh >/dev/null
+./scripts/setup-gitops.sh >/dev/null
 ```
 
 **Esperado:** erro acionável e `EXIT: 1`:
@@ -231,7 +231,7 @@ mergeado e o rollout em produção concluir, o `promote.py` atualiza os usos pro
 os efêmeros.
 
 ```bash
-./orchestrator/simulate-change.sh wallet sha256:wallet-v2-prod
+./scripts/simulate-change.sh wallet sha256:wallet-v2-prod
 ```
 
 **Esperado:**

@@ -82,4 +82,4 @@ echo "  ✓ produção atualizada: $PROD_RELEASE"
 # Passo 2 — pós-deploy (rollout OK): espelha no staging compartilhado e limpa efêmeros.
 # Só chega aqui se o passo 1 teve sucesso.
 echo "[2/2] Executando o promote (pós-deploy)..."
-python3 "$SCRIPT_DIR/promote.py" --service "$SERVICE" --digest "$DIGEST"
+python3 "$REPO_ROOT/orchestrator/promote.py" --service "$SERVICE" --digest "$DIGEST"
