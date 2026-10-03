@@ -12,8 +12,10 @@ O que esta demo prova:
 3. A **renderização dos templates** (helm template) para cada papel — incluindo o roteamento Istio
 4. O **promote** fechando o ciclo (via `simulate-change.sh`): atualização e limpeza
 
-Fora do escopo (próximo passo): subir no GKE com Istio + Argo CD e validar o roteamento
-em runtime. Os serviços **não** precisam rodar nesta demo.
+Esta é a demo **local** (sem cluster): prova a lógica rápido e sem custo. Para ver a
+plataforma funcionando em runtime no GKE — com o Istio desviando o tráfego de verdade —
+veja a demo de cluster em [`demo-cluster.md`](demo-cluster.md). Os serviços **não**
+precisam rodar nesta demo local.
 
 Todos os comandos assumem a raiz do projeto como diretório de trabalho:
 
@@ -53,9 +55,9 @@ Os três serviços estão onboardados no `gitops-staging` com runtime compartilh
 ## Bloco 0 — Setup do gitops (estado base)
 
 **Objetivo:** deixar o gitops no estado base esperado antes da homologação. Num cenário real,
-os digests produtivos chegam dos deploys em produção; aqui usamos valores fictícios e
-escrevemos o **mesmo digest** em produção e no staging compartilhado de cada serviço (o
-runtime compartilhado espelha a produção vigente).
+os digests produtivos chegam dos deploys em produção; aqui usamos os **digests reais** das
+imagens v1.0.0 publicadas no Artifact Registry, escrevendo o **mesmo digest** em produção e
+no staging compartilhado de cada serviço (o runtime compartilhado espelha a produção vigente).
 
 ```bash
 ./scripts/setup-gitops.sh
@@ -96,7 +98,7 @@ pastas efêmeras `wallet/candidate/` e `checkout/client/for-wallet/`.
 ### 1.2 Rodar a homologação (simula o Jenkins → orquestrador)
 
 ```bash
-./scripts/simulate-jenkins.sh wallet sha256:wallet-v2-candidate
+./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 ```
 
 **O que prova:** o orquestrador valida o onboarding do wallet, confirma que a dependência
@@ -134,9 +136,9 @@ cat gitops-staging/checkout/client/for-wallet/release.yaml
 
 **Esperado:**
 - `wallet/candidate/values.yaml` → `role: candidate` + `clients: [checkout-wallet-client]`
-- `wallet/candidate/release.yaml` → `digest: sha256:wallet-v2-candidate`
+- `wallet/candidate/release.yaml` → `digest: sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0`
 - `checkout/client/for-wallet/values.yaml` → `role: client`, `target: wallet`, `istioInject: true`
-- `checkout/client/for-wallet/release.yaml` → o digest produtivo do checkout (`sha256:checkout-prod-v1`)
+- `checkout/client/for-wallet/release.yaml` → o digest produtivo do checkout (`sha256:c377e7c566922b44291a3d5f7da1f17106f2562fe5bd1b0fafc7739720d81ba0`)
 
 ### 1.5 Testar a validação de erro (dependência sem runtime)
 
@@ -147,7 +149,7 @@ runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver va
 # esvazia o staging do ledger (simula dependência sem runtime compartilhado)
 printf 'image:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
 
-./scripts/simulate-jenkins.sh wallet sha256:wallet-v2-candidate ; echo "EXIT: $?"
+./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0 ; echo "EXIT: $?"
 
 # restaura o runtime do ledger para seguir a demo
 ./scripts/setup-gitops.sh >/dev/null
@@ -183,7 +185,7 @@ helm template ledger ./helm/service-chart \
   -f gitops-staging/ledger/staging/release.yaml | grep -E "^kind:|  name:|@sha256"
 ```
 
-**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:ledger-prod-v1`.
+**Esperado:** `Service` + `Deployment` chamados `ledger`, imagem com `@sha256:e966d211ddc0c084b23fe69caf6663d6e46bcaabc31ad229c8498881b97f5c02`.
 É a dependência compartilhada que a candidata do wallet consome.
 
 ### 2.3 Candidata (wallet) → Service + Deployment + VirtualService (o roteamento)
@@ -196,7 +198,7 @@ helm template wallet-candidate ./helm/service-chart \
 ```
 
 **Esperado (os três recursos):**
-- `Service` e `Deployment` chamados `wallet-candidate`, imagem `@sha256:wallet-v2-candidate`
+- `Service` e `Deployment` chamados `wallet-candidate`, imagem `@sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0`
 - `VirtualService` `wallet-candidate-routes` com:
   - host `wallet.payments.svc.cluster.local`
   - match `sourceLabels: app: checkout-wallet-client` → destino `wallet-candidate...`
@@ -225,28 +227,30 @@ helm template checkout-wallet-client ./helm/service-chart \
 
 ## Bloco 3 — Promote (fechamento do ciclo na janela de change)
 
-**Objetivo:** provar o fechamento do ciclo. O `simulate-change.sh` reproduz o passo final do
-Job 2 do GitHub Actions (executado na janela de change aprovada): após o PR de promoção ser
-mergeado e o rollout em produção concluir, o `promote.py` atualiza os usos produtivos e remove
-os efêmeros.
+**Objetivo:** provar o fechamento do ciclo. O `simulate-change.sh` condensa o Job 2 do
+GitHub Actions (janela de change aprovada), em dois passos na ordem correta:
+1. atualiza o `gitops-production/wallet/release.yaml` com o novo digest (o merge do PR de
+   promoção) — **se este passo falhar, o promote não roda**;
+2. executa o `promote.py` (pós-deploy): espelha o digest no runtime compartilhado do staging
+   e remove os efêmeros.
 
 ```bash
-./scripts/simulate-change.sh wallet sha256:wallet-v2-prod
+./scripts/simulate-change.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 ```
 
 **Esperado:**
-- Atualização: `wallet/staging/release.yaml` (runtime compartilhado) atualizado para o novo
-  digest produtivo — o compartilhado passa a espelhar a nova produção
+- Produção: `gitops-production/wallet/release.yaml` atualizado para o novo digest (merge do PR)
+- Atualização: `wallet/staging/release.yaml` (runtime compartilhado) espelha o novo digest
 - Limpeza: `✓ removido: .../wallet/candidate` e `✓ removido: .../checkout/client/for-wallet`
 
 ### Conferir o estado final
 
 ```bash
-git status --short gitops-staging
+git status --short gitops-staging gitops-production
 ```
 
-**Esperado:** as pastas efêmeras (`candidate/`, `client/for-*/`) sumiram; resta só o
-`staging/release.yaml` do wallet com o novo digest (além do que o setup já havia mudado).
+**Esperado:** as pastas efêmeras (`candidate/`, `client/for-*/`) sumiram; `wallet/staging/release.yaml`
+e `gitops-production/wallet/release.yaml` com o novo digest.
 
 ---
 
@@ -269,9 +273,8 @@ git status --short                    # deve mostrar árvore limpa (só os scrip
 - [ ] Staging com digest → Service + Deployment (Bloco 2.2)
 - [ ] Candidata gera VirtualService com rota do client + fallback (Bloco 2.3)
 - [ ] Client gera sidecar e nenhum VirtualService (Bloco 2.4)
-- [ ] `simulate-change.sh` remove os efêmeros e atualiza o runtime compartilhado (Bloco 3)
+- [ ] `simulate-change.sh` atualiza produção, espelha no compartilhado e remove os efêmeros (Bloco 3)
 
-Com todos os itens verificados, a lógica da plataforma está provada localmente. O próximo
-passo é provisionar o cluster GKE com Istio e Argo CD, e validar o roteamento em runtime
-(o único comportamento que depende do cluster: o Envoy desviando o tráfego real do client
-para a candidata).
+Com todos os itens verificados, a lógica da plataforma está provada localmente. Para ver o
+comportamento que depende do cluster — o Envoy desviando o tráfego real do client para a
+candidata — siga a demo de cluster em [`demo-cluster.md`](demo-cluster.md).
