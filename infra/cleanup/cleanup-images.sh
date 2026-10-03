@@ -4,7 +4,7 @@
 #
 # Por padrão, apaga o repositório 'docker-images' inteiro (todas as imagens e tags).
 # Operação IRREVERSÍVEL — mas reversível na prática: basta rodar
-# services/publish-images.sh para republicar a partir das imagens locais.
+# infra/publish-images.sh para republicar a partir das imagens locais.
 #
 # Uso:
 #   ./cleanup-images.sh            # pede confirmação
@@ -42,4 +42,4 @@ gcloud artifacts repositories delete "${REPO}" \
   --quiet
 
 echo "✓ Repositório '${REPO}' removido."
-echo "  (para republicar: ./services/publish-images.sh — ele recria o repo)"
+echo "  (para republicar: ./infra/publish-images.sh — ele recria o repo)"

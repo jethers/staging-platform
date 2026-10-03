@@ -13,6 +13,16 @@ sem Load Balancer. Validação por `kubectl exec`/`port-forward`.
 
 ## Ordem de execução
 
+### 0. Publicar as imagens no Artifact Registry
+Pré-requisito: as imagens dos serviços publicadas (os `release.yaml` do gitops
+apontam para elas por digest). Builda-se as imagens localmente e publica-se com:
+```bash
+./publish-images.sh
+```
+O script cria o repositório `docker-images` (us-central1) se necessário, dá push
+das imagens e imprime os digests reais. Já executado nesta PoC; refaça se as
+imagens não estiverem no registry (ex: após `cleanup-images.sh`).
+
 ### 1. Criar o cluster
 Ver `01-create-cluster.md` (gcloud ou console). **Essencial:** flag
 `allow-net-admin` (sem ela o Istio não injeta sidecar no Autopilot). Depois:
