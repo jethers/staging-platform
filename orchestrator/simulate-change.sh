@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 #
-# simulate-change.sh — simula a janela de change acionando o promote (pós-deploy).
+# simulate-change.sh — simula a janela de change (Job 2 do GitHub Actions, condensado).
 #
-# No fluxo real, isto é o passo final do Job 2 do GitHub Actions, executado na janela
-# de change aprovada: após ler o PR de promoção, validar os gates (change aprovada,
-# janela, PR aprovado), revalidar os testes de integração, dar merge no PR e acompanhar
-# o rollout em produção, o job chama o promote.py com o serviço e o digest produtivo.
+# No fluxo real, o Job 2 executado na janela de change: lê o PR de promoção, valida os
+# gates (change aprovada, janela, PR aprovado), revalida os testes de integração, dá
+# merge no PR (que atualiza o repo de PRODUÇÃO com o novo digest), acompanha o rollout
+# em produção e, com o rollout bem-sucedido, executa o promote (pós-deploy).
 #
-# Este script reproduz apenas esse passo final (promote.py). Os passos anteriores do
-# Job 2 estão fora do escopo da simulação local.
+# Esta simulação condensa isso em dois passos, na ordem correta:
+#   1) atualiza gitops-production/<service>/release.yaml com o novo digest
+#      (representa o merge do PR de promoção)
+#   2) executa o promote.py (pós-deploy): espelha o digest no runtime compartilhado
+#      do staging e remove os efêmeros (candidate/ e */client/for-<service>/)
+#
+# Os passos de revalidação de testes e de acompanhamento do rollout ficam implícitos.
 #
 # Uso:
 #   ./simulate-change.sh <service> <digest>
@@ -18,6 +23,7 @@
 #
 # Variáveis de ambiente (opcionais; têm default relativo a este script):
 #   GITOPS_STAGING_PATH  path do repositório gitops-staging
+#   GITOPS_PROD_PATH     path do repositório gitops-production
 
 set -euo pipefail
 
@@ -30,16 +36,34 @@ if [[ -z "$SERVICE" || -z "$DIGEST" ]]; then
   exit 1
 fi
 
+if [[ "$DIGEST" != sha256:* ]]; then
+  echo "Digest inválido: '$DIGEST'. Deve começar com 'sha256:'" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export GITOPS_STAGING_PATH="${GITOPS_STAGING_PATH:-$REPO_ROOT/gitops-staging}"
+export GITOPS_PROD_PATH="${GITOPS_PROD_PATH:-$REPO_ROOT/gitops-production}"
+
+PROD_RELEASE="$GITOPS_PROD_PATH/$SERVICE/release.yaml"
 
 echo "────────────────────────────────────────────────────────────"
 echo " Janela de change (simulada)"
 echo "   serviço promovido : $SERVICE"
 echo "   digest produtivo  : $DIGEST"
-echo "   executando o passo final do Job 2 (promote.py)..."
 echo "────────────────────────────────────────────────────────────"
 
+# Passo 1 — merge do PR de promoção: atualiza o repo de PRODUÇÃO.
+echo "[1/2] Atualizando o repo de produção (merge do PR de promoção)..."
+if [[ ! -f "$PROD_RELEASE" ]]; then
+  echo "  ✗ release.yaml de produção não encontrado: $PROD_RELEASE" >&2
+  exit 1
+fi
+printf '# Imagem promovida da homologação — atualizada pela automação após aprovação do PR\nimage:\n  digest: "%s"\n' "$DIGEST" > "$PROD_RELEASE"
+echo "  ✓ $PROD_RELEASE"
+
+# Passo 2 — pós-deploy (rollout OK): espelha no staging compartilhado e limpa efêmeros.
+echo "[2/2] Executando o promote (pós-deploy)..."
 python3 "$SCRIPT_DIR/promote.py" --service "$SERVICE" --digest "$DIGEST"
