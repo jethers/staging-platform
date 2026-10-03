@@ -6,6 +6,13 @@
 # NÃO instalamos ingress/egress gateway — isso evita criar um Load Balancer (custo).
 # Usamos o profile 'minimal' (apenas o istiod / control plane).
 #
+# IMPORTANTE (GKE Autopilot): o Istio CNI node agent exige a capability SYS_ADMIN,
+# que o Autopilot NÃO concede (nem com allow-net-admin). Por isso desabilitamos o
+# CNI (components.cni.enabled=false) — o Istio usa então o init-container
+# 'istio-init', que configura o iptables com o NET_ADMIN liberado pela flag
+# allow-net-admin do cluster. Sem isso, a instalação falha ao tentar escrever um
+# ConfigMap em kube-system (namespace gerenciado e bloqueado no Autopilot).
+#
 # Pré-requisitos:
 #   - cluster criado e kubeconfig ativo (infra/01-create-cluster.md)
 #   - istioctl instalado  (https://istio.io/latest/docs/setup/getting-started/#download)
@@ -26,8 +33,8 @@ echo "Contexto kube atual:"
 kubectl config current-context
 echo
 
-# 1. Control plane apenas (istiod); sem gateways.
-istioctl install --set profile=minimal -y
+# 1. Control plane apenas (istiod); sem gateways; sem CNI (usa istio-init).
+istioctl install --set profile=minimal --set components.cni.enabled=false -y
 
 # 2. Namespace da aplicação + habilitação da injeção automática de sidecar.
 #    (apenas os clients recebem sidecar via annotation no chart; o label no

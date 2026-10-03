@@ -20,9 +20,12 @@ echo "────────────────────────�
 kubectl config current-context
 echo
 
-# 1. Namespace e instalação oficial
+# 1. Namespace e instalação oficial.
+#    --server-side é necessário: o CRD do ApplicationSet excede o limite de
+#    annotation do apply client-side (metadata.annotations Too long).
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 echo
 echo "Aguardando o argocd-server ficar pronto..."

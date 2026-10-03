@@ -12,7 +12,7 @@ capability `NET_ADMIN`, liberada pela política de workload `allow-net-admin`.
 gcloud container clusters create-auto staging-platform \
   --project=staging-platform-510420 \
   --location=us-central1 \
-  --workload-policies=allow-net-admin
+  --autopilot-workload-policies=allow-net-admin
 ```
 
 ## Opção B — Console
@@ -20,8 +20,14 @@ gcloud container clusters create-auto staging-platform \
 1. Kubernetes Engine → Create → **Autopilot**
 2. Nome: `staging-platform` · Região: `us-central1`
 3. Em **Advanced settings / Security** → habilite **Allow NET_ADMIN**
-   (se a UI não expuser, crie e rode depois:
-   `gcloud container clusters update staging-platform --location=us-central1 --enable-workload-policies=allow-net-admin`)
+   (se a UI não expuser ou não gravar, habilite depois:
+   `gcloud container clusters update staging-platform --location=us-central1 --autopilot-workload-policies=allow-net-admin`)
+
+> Confirme que ficou gravado:
+> ```bash
+> gcloud container clusters describe staging-platform --location=us-central1 \
+>   --format="value(autopilot.workloadPolicyConfig.allowNetAdmin)"   # deve imprimir True
+> ```
 
 ## Obter credenciais (kubeconfig)
 
