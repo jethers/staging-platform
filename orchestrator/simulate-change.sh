@@ -56,14 +56,30 @@ echo "   digest produtivo  : $DIGEST"
 echo "────────────────────────────────────────────────────────────"
 
 # Passo 1 — merge do PR de promoção: atualiza o repo de PRODUÇÃO.
+# Se este passo falhar, o script NÃO segue para o promote (o pós-deploy só faz
+# sentido depois que produção foi efetivamente atualizada e o rollout ocorreu).
 echo "[1/2] Atualizando o repo de produção (merge do PR de promoção)..."
 if [[ ! -f "$PROD_RELEASE" ]]; then
   echo "  ✗ release.yaml de produção não encontrado: $PROD_RELEASE" >&2
+  echo "  → promote abortado." >&2
   exit 1
 fi
-printf '# Imagem promovida da homologação — atualizada pela automação após aprovação do PR\nimage:\n  digest: "%s"\n' "$DIGEST" > "$PROD_RELEASE"
-echo "  ✓ $PROD_RELEASE"
+
+if ! printf '# Imagem promovida da homologação — atualizada pela automação após aprovação do PR\nimage:\n  digest: "%s"\n' "$DIGEST" > "$PROD_RELEASE"; then
+  echo "  ✗ falha ao escrever o digest em $PROD_RELEASE" >&2
+  echo "  → promote abortado." >&2
+  exit 1
+fi
+
+# Confirma que o digest foi de fato gravado antes de prosseguir.
+if ! grep -q "$DIGEST" "$PROD_RELEASE"; then
+  echo "  ✗ o digest não foi gravado corretamente em $PROD_RELEASE" >&2
+  echo "  → promote abortado." >&2
+  exit 1
+fi
+echo "  ✓ produção atualizada: $PROD_RELEASE"
 
 # Passo 2 — pós-deploy (rollout OK): espelha no staging compartilhado e limpa efêmeros.
+# Só chega aqui se o passo 1 teve sucesso.
 echo "[2/2] Executando o promote (pós-deploy)..."
 python3 "$SCRIPT_DIR/promote.py" --service "$SERVICE" --digest "$DIGEST"
