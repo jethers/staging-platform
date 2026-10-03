@@ -21,6 +21,13 @@ services/wallet/wallet
 test_*.yaml
 test_*.yml
 
+# Segredos / chaves (nunca versionar)
+.ssh/
+*.pem
+id_*
+*_rsa
+*_ed25519
+
 # OS
 .DS_Store
 Thumbs.db
