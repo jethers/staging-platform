@@ -17,12 +17,12 @@ Este documento descreve o `orchestrator.py` (setup).
 ## Fluxo detalhado
 
 ```
-Jenkins
-  └── aciona GitHub Actions com:
+Pipeline de CI (externa ao projeto)
+  └── build/scan/push da imagem candidata, e ao final aciona o CD com:
         service=wallet
-        digest=sha256:abc123...   (digest da imagem candidata, do CI)
+        digest=sha256:abc123...   (digest da imagem candidata já publicada)
 
-GitHub Actions (orchestrator.py)
+Pipeline de CD (orchestrator.py)
   1. Lê gitops-staging/wallet/dependencies.yaml   → ex.: [ledger]  (lista simples)
      Lê gitops-staging/wallet/clients.yaml        → ex.: [checkout]
 
@@ -53,7 +53,7 @@ ApplicationSet + Argo CD
   └── o VirtualService do host wallet é renderizado a partir dos values da candidata
       (rotas dos clients → wallet-candidate + fallback)
 
-GitHub Actions (continuação da pipeline)
+Pipeline de CD (continuação)
   7. Aguarda Argo CD reportar Synced/Healthy
   8. Executa testes de integração
   9. Testes OK → abre PR de promoção para produção
@@ -64,12 +64,12 @@ GitHub Actions (continuação da pipeline)
 
 | Parâmetro | Origem | Descrição | Exemplo |
 |-----------|--------|-----------|---------|
-| `service` | Jenkins (`--service` ou env `SERVICE`) | Nome do serviço sendo homologado | `wallet` |
-| `digest` | Jenkins (`--digest` ou env `DIGEST`) | Digest SHA-256 da imagem candidata | `sha256:abc123...` |
+| `service` | Pipeline de CI (`--service` ou env `SERVICE`) | Nome do serviço sendo homologado | `wallet` |
+| `digest` | Pipeline de CI (`--digest` ou env `DIGEST`) | Digest SHA-256 da imagem candidata | `sha256:abc123...` |
 | `GITOPS_STAGING_PATH` | env (infra) | Path do repositório gitops-staging | — |
 | `GITOPS_PROD_PATH` | env (infra) | Path do repositório gitops-production | — |
 
-O **namespace não é entrada** — é lido do campo `namespace` no `values.yaml` base de cada serviço, já que cada serviço pode estar num namespace diferente. O Jenkins fornece apenas `service` e `digest`.
+O **namespace não é entrada** — é lido do campo `namespace` no `values.yaml` base de cada serviço, já que cada serviço pode estar num namespace diferente. A Pipeline de CI fornece apenas `service` e `digest`.
 
 ## Regras de negócio
 
@@ -101,4 +101,4 @@ O VirtualService do host da candidata é gerado pelo chart da pasta `candidate/`
 
 ## Simulação local (PoC)
 
-Na PoC, o Jenkins é simulado por um script shell que passa `service` e `digest` ao orquestrador. O orquestrador opera sobre os arquivos locais do repositório, sem precisar de cluster — a validação é feita renderizando os charts com `helm template`.
+Na PoC, a Pipeline de CI é simulada por um script shell (`scripts/simulate-ci.sh`) que passa `service` e `digest` ao orquestrador. O orquestrador opera sobre os arquivos locais do repositório, sem precisar de cluster — a validação é feita renderizando os charts com `helm template`.

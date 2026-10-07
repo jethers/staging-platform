@@ -22,17 +22,71 @@ A plataforma provisiona um ambiente de homologação compartilhado onde uma vers
 - **Ambiente isolado** — homologação e produção rodam em clusters e VPCs separados
 - **Dados mascarados** — dados produtivos são sanitizados antes de serem usados em homologação
 
+## Fronteiras de escopo
+
+Esta seção delimita, de forma explícita, onde a plataforma **começa** e **termina** — o
+que é premissa de entrada, o que foi implementado neste projeto, e de que depende para o
+ciclo se completar.
+
+### Premissas de entrada (fora do escopo deste projeto)
+
+- **CI da imagem candidata.** O build, os testes unitários, o scan de segurança e a
+  publicação da imagem candidata no registry são responsabilidade da **Pipeline de CI de
+  cada serviço**. A plataforma não constrói nem publica imagens.
+- **Acionamento do CD pelo CI.** Espera-se que, ao final do CI, a pipeline **acione o CD**
+  (o orquestrador) passando `service` + `digest` da imagem já publicada. Esse gatilho é um
+  contrato de integração; a ferramenta de CI (GitHub Actions, GitLab CI, Jenkins, etc.) é
+  livre.
+- **Imagens disponíveis no registry por digest.** Os `release.yaml` do gitops referenciam
+  imagens por digest imutável; publicá-las é pré-requisito.
+- **Cluster, Istio e Argo CD provisionados.** A plataforma assume um cluster de homologação
+  com Istio (service mesh) e um controlador GitOps (Argo CD) já instalados. O
+  provisionamento está documentado em [`../infra/README.md`](../infra/README.md), mas o
+  mecanismo é substituível.
+- **`gitops-production` alimentado por algum CD.** Os digests produtivos vigentes são lidos
+  do repositório `gitops-production`; mantê-lo atualizado é responsabilidade do fluxo de
+  deploy de produção.
+
+### O que foi implementado (o escopo deste projeto)
+
+- **Orquestrador de setup** (`orchestrator.py` + `manifest/validator/writer`): lê os
+  manifestos de homologação, valida onboarding e pré-requisitos, e escreve as pastas
+  efêmeras (candidata + clients de regressão) no `gitops-staging`.
+- **Orquestrador de pós-deploy** (`promote.py`): espelha o digest promovido no runtime
+  compartilhado e remove os efêmeros da homologação encerrada.
+- **Helm chart genérico** que renderiza cada papel (staging, candidate, client) e o
+  **VirtualService** que faz o desvio client → candidata.
+- **ApplicationSet** que descobre os papéis automaticamente a partir dos `release.yaml`.
+- **Serviços de exemplo** (ledger, wallet, checkout) para exercitar o fluxo de 3 saltos.
+
+### Dependências de saída (o que a automação NÃO faz)
+
+- **A automação não aplica nada no cluster.** Tanto o setup quanto o promote apenas
+  **escrevem no repositório gitops** (commit/push). Quem lê o gitops e aplica/reconcilia os
+  manifestos no cluster é o **Argo CD** (ou outra solução de deployment GitOps). A plataforma
+  entrega *estado desejado em Git*; o deploy é consequência.
+- **A promoção para produção é só uma atualização de gitops.** Na promoção, a automação
+  grava o digest homologado no `gitops-production/<service>/release.yaml`. **Não** faz deploy
+  em produção: o controlador GitOps de produção é quem aplica a nova imagem. O projeto para
+  na fronteira do Git.
+- **Testes de integração e gates de change** são orquestrados pela pipeline de CD (etapa
+  descrita no ciclo de vida), mas as suítes de teste em si pertencem a cada serviço.
+
+Em uma frase: **a plataforma transforma um gatilho `(service, digest)` em alterações
+versionadas no gitops** (criar/limpar efêmeros, espelhar digests); tudo que vem antes (CI,
+publicação) e depois (aplicação no cluster) é feito por sistemas externos, por contrato.
+
 ## Componentes
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    CI (Jenkins)                          │
+│            Pipeline de CI  (externa ao projeto)          │
 │   build · lint · testes unitários · scan · publicação    │
 └────────────────────┬─────────────────────────────────────┘
-                     │ service + digest
+                     │ service + digest  (CI aciona o CD)
                      ▼
 ┌──────────────────────────────────────────────────────────┐
-│         GitHub Actions — setup (orchestrator.py)         │
+│         Pipeline de CD — setup (orchestrator.py)         │
 │   lê manifestos · resolve digests prod · escreve staging │
 └──────────┬───────────────────────────────┬───────────────┘
            │                               │ lê digests produtivos
@@ -53,10 +107,15 @@ A plataforma provisiona um ambiente de homologação compartilhado onde uma vers
 
 Após deploy em produção:
 ┌──────────────────────────────────────────────────────────┐
-│       GitHub Actions — promote (promote.py)              │
+│       Pipeline de CD — promote (promote.py)              │
 │   atualiza usos produtivos em hml · remove efêmeros      │
 └──────────────────────────────────────────────────────────┘
 ```
+
+> As pipelines de CI e CD são desenhadas como componentes lógicos. A implementação
+> concreta (GitHub Actions, GitLab CI, Jenkins, etc.) é intercambiável: o projeto não
+> depende de nenhuma ferramenta específica. O que importa são os contratos — o CI
+> aciona o CD com `service` + `digest`; o CD opera sobre os repositórios gitops.
 
 ## Roles dos serviços no cluster de homologação
 
@@ -117,8 +176,8 @@ Os manifestos `dependencies.yaml` e `clients.yaml` ficam no `gitops-staging` (n�
 
 ## Ciclo de vida de uma homologação
 
-1. Jenkins executa o CI e publica a imagem no registry com o digest imutável
-2. Jenkins aciona o GitHub Actions passando `service` e `digest`
+1. A **Pipeline de CI** (externa ao projeto) builda, testa, escaneia e publica a imagem no registry com o digest imutável
+2. Ao final, o **CI aciona o CD** passando `service` e `digest` (ponto de entrada da plataforma)
 3. `orchestrator.py` lê `dependencies.yaml` e `clients.yaml` do serviço no `gitops-staging`
 4. Resolve os digests produtivos das dependências e clients em `gitops-production` (erro explícito se faltar)
 5. Cria as pastas efêmeras no `gitops-staging` (candidata e clients de regressão) com seus `values.yaml` e `release.yaml`, e faz commit/push

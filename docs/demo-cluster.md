@@ -79,11 +79,11 @@ kubectl get pods -n payments
 
 ## Bloco 2 — Homologar a candidata do wallet
 
-Aciona o orquestrador (via o script de simulação do Jenkins) e faz commit/push. O Argo
+Aciona o orquestrador (via o script que simula a Pipeline de CI) e faz commit/push. O Argo
 observa `main` e o ApplicationSet detecta as novas pastas.
 
 ```bash
-./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
+./scripts/simulate-ci.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 git add gitops-staging && git commit -m "demo: homologa candidata do wallet" && git push
 ```
 

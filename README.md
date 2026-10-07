@@ -1,131 +1,74 @@
 # Staging Platform — PoC de Homologação Integrada
 
-Plataforma de homologação integrada para microsserviços. Serviços candidatos são testados em ambiente isolado com as versões produtivas das dependências.
+Plataforma de homologação integrada para microsserviços. Uma versão **candidata** de um
+serviço é testada contra as versões **produtivas** de suas dependências, num ambiente
+compartilhado e isolado, com o tráfego dos clients de regressão desviado para a candidata
+de forma transparente pelo **Istio** — sem alterar o código das aplicações.
+
+O fluxo é **GitOps**: a automação transforma um gatilho `(service, digest)` em alterações
+versionadas nos repositórios gitops; o **Argo CD** aplica no cluster.
+
+> Status: PoC validada end-to-end num cluster **GKE Autopilot** real — incluindo o
+> roteamento Istio em runtime (ver [demo de cluster](docs/demo-cluster.md)).
+
+---
+
+## Fronteiras de escopo (resumo)
+
+Para evitar ambiguidade sobre o que a plataforma faz:
+
+- **Entra pronto (premissa):** o **CI de cada serviço** builda, escaneia e publica a imagem
+  candidata, e ao final **aciona o CD** (o orquestrador) com `service` + `digest`. A
+  ferramenta de CI/CD é intercambiável (GitHub Actions, GitLab CI, Jenkins, …).
+- **Implementado aqui:** o orquestrador (setup + promote), o Helm chart genérico, o
+  roteamento Istio (VirtualService) e o ApplicationSet que descobre os papéis.
+- **Sai para outro sistema (dependência):** a automação **só escreve no gitops**. Quem
+  aplica no cluster — tanto em homologação quanto em produção — é o **Argo CD** (ou outra
+  solução GitOps). Na promoção, a automação apenas grava o digest homologado em
+  `gitops-production`; o deploy em produção é feito pelo controlador GitOps de produção.
+
+Detalhes completos em [Arquitetura → Fronteiras de escopo](docs/architecture.md#fronteiras-de-escopo).
+
+---
 
 ## Documentação
 
-- [Demo (passo a passo)](docs/demo.md) — roteiro reproduzível para validar a PoC até a renderização dos charts
-- [Arquitetura](docs/architecture.md) — visão geral da solução, componentes e fluxo
-- [Roteamento com Istio](docs/routing.md) — como o tráfego é desviado para candidatas e dependências dedicadas
-- [Argo CD e ApplicationSet](docs/argocd.md) — provisionamento, ciclo de vida via release.yaml e prune
-- [Pós-deploy](docs/post-deploy.md) — atualização e limpeza da homologação após deploy em produção
-- [Decisões de design](docs/decisions.md) — registro das principais decisões arquiteturais
-- [Onboarding](docs/onboarding.md) — como integrar um novo serviço na plataforma
-- [Orquestrador](docs/orchestrator.md) — como o orquestrador funciona
+- [Arquitetura](docs/architecture.md) — visão geral, componentes, fronteiras de escopo e fluxo
+- [Demo local](docs/demo.md) — prova a lógica sem cluster, via `helm template`
+- [Demo no cluster](docs/demo-cluster.md) — prova o roteamento Istio em runtime no GKE
+- [Infra (runbook)](infra/README.md) — como subir cluster, Istio, Argo CD e ApplicationSet
+- [Orquestrador](docs/orchestrator.md) — entradas, regras de negócio e simulação
+- [Roteamento com Istio](docs/routing.md) — como o tráfego é desviado para a candidata
+- [Argo CD e ApplicationSet](docs/argocd.md) — provisionamento e ciclo de vida via `release.yaml`
+- [Pós-deploy](docs/post-deploy.md) — atualização e limpeza após deploy em produção
+- [Onboarding](docs/onboarding.md) — como integrar um novo serviço
+- [Decisões de design](docs/decisions.md) — registro das decisões arquiteturais
 
 ---
 
+## Serviços de exemplo
+
+Fluxo de 3 saltos: `checkout → wallet → ledger`.
+
+| Serviço | Porta (compose) | Descrição |
+|---------|-----------------|-----------|
+| `ledger` | 8081 | Serviço de saldo. Expõe o balanço de contas. |
+| `wallet` | 8082 | Carteira. Consome o `ledger` e enriquece a resposta. |
+| `checkout` | 8083 | Checkout. Consome o `wallet` (que consome o `ledger`). |
+
 ---
 
-## Serviços
-
-| Serviço | Porta | Descrição |
-|---------|-------|-----------|
-| `ledger` | 8081 | Serviço de saldo. Expõe balanço de contas. |
-| `wallet` | 8082 | Serviço de carteira. Consome o `ledger` e enriquece a resposta. |
-
----
-
-## Subindo o ambiente
+## Começando rápido (local, sem cluster)
 
 ```bash
-# Na raiz do projeto
-docker compose up -d
-```
-
-Para acompanhar os logs em tempo real (filtrando healthchecks):
-
-```bash
-docker compose logs -f | grep -v "/health"
-```
-
-Para derrubar:
-
-```bash
+# serviços rodando localmente (opcional, para ver o fluxo de chamadas)
+docker compose up -d --build
+curl http://localhost:8083/checkout/123   # dispara checkout → wallet → ledger
 docker compose down
 ```
 
----
-
-## Testando as APIs
-
-### ledger
-
-```bash
-# Health
-curl http://localhost:8081/health
-
-# Saldo de uma conta
-curl http://localhost:8081/balance/123
-curl http://localhost:8081/balance/abc
-```
-
-Resposta esperada de `/balance/{account}`:
-```json
-{
-  "account": "123",
-  "balance": 1150.5,
-  "currency": "BRL"
-}
-```
-
-> O saldo é mockado e determinístico — a mesma conta sempre retorna o mesmo valor.
-
----
-
-### wallet
-
-```bash
-# Health
-curl http://localhost:8082/health
-
-# Carteira de uma conta (chama o ledger internamente)
-curl http://localhost:8082/wallet/123
-curl http://localhost:8082/wallet/abc
-```
-
-Resposta esperada de `/wallet/{account}`:
-```json
-{
-  "account": "123",
-  "balance": 1150.5,
-  "currency": "BRL",
-  "wallet_status": "active"
-}
-```
-
----
-
-## O que aparece nos logs
-
-Uma requisição em `GET /wallet/123` gera 3 linhas de log:
-
-```
-# wallet recebeu a requisição
-wallet-1  | request_id=abc method=GET path=/wallet/123 status=200 latency=16ms
-
-# wallet chamou o ledger (upstream)
-wallet-1  | upstream=ledger account=123 status=200 latency=16ms
-
-# ledger recebeu a chamada vinda do wallet
-ledger-1  | request_id=xyz method=GET path=/balance/123 status=200 latency=100µs
-```
-
----
-
-## Rodando sem Docker
-
-Em dois terminais separados:
-
-```bash
-# Terminal 1 — ledger
-cd services/ledger
-PORT=8081 go run .
-
-# Terminal 2 — wallet
-cd services/wallet
-PORT=8082 LEDGER_URL=http://localhost:8081 go run .
-```
+Para a demo da plataforma (orquestrador + renderização dos charts), siga o roteiro
+reproduzível em [docs/demo.md](docs/demo.md).
 
 ---
 
@@ -133,29 +76,50 @@ PORT=8082 LEDGER_URL=http://localhost:8081 go run .
 
 ```
 staging-platform/
-  services/
-    ledger/               # Serviço de saldo (Go)
-    wallet/               # Serviço de carteira (Go)
+  services/               # serviços de exemplo (Go) + Dockerfiles
+    ledger/  wallet/  checkout/
   helm/
-    service-chart/        # Helm Chart genérico para qualquer serviço
-    values-ledger.yaml    # Values de exemplo do ledger
-    values-wallet.yaml    # Values de exemplo do wallet
-  gitops-staging/         # Monorepo de homologação (fonte de verdade)
+    service-chart/        # Helm chart genérico (um chart p/ todos os papéis)
+  gitops-staging/         # monorepo de homologação (fonte de verdade da hml)
     <service>/
       values.yaml         # config base (name, namespace, image, env)
       dependencies.yaml   # dependências do serviço
-      clients.yaml        # clients de regressão do serviço
-      staging/            # instância compartilhada (role: staging)
-      candidate/          # versão em homologação (role: candidate)
-      dependency/for-*/   # dependências dedicadas por candidata
-      client/for-*/       # clients de regressão por candidata
-  gitops-production/      # Digests produtivos por serviço (repo separado em prod)
+      clients.yaml        # clients de regressão
+      staging/            # instância compartilhada (role: staging) — permanente
+      candidate/          # versão em homologação (role: candidate) — efêmera
+      client/for-*/       # clients de regressão por candidata — efêmero
+  gitops-production/      # digests produtivos por serviço (repo separado em prod)
     <service>/release.yaml
-  orchestrator/           # Scripts Python (setup e promote)
-    orchestrator.py       # setup da candidata
-    manifest.py / validator.py / writer.py
-  docs/                   # Documentação de arquitetura e decisões
+  orchestrator/           # orquestrador (Python): setup e promote
+    orchestrator.py  promote.py  manifest.py  validator.py  writer.py
+  scripts/                # scripts de simulação da demo (CI, change, setup, build)
+    build-images.sh  setup-gitops.sh  simulate-ci.sh  simulate-change.sh
+  infra/                  # provisionamento do cluster (GKE Autopilot + Istio + Argo CD)
+    01-create-cluster.md  02-install-istio.sh  03-deploy-key.md  04-install-argocd.sh
+    publish-images.sh  argocd/  cleanup/
+  docs/                   # arquitetura, decisões, demos e guias
   docker-compose.yaml
 ```
 
-> Os manifestos de homologação (`dependencies.yaml`, `clients.yaml`) ficam no `gitops-staging`, não dentro de `services/`. Isso permite que o CD leia tudo de um único repositório. Ver [arquitetura](docs/architecture.md).
+> Os manifestos de homologação (`dependencies.yaml`, `clients.yaml`) ficam no
+> `gitops-staging`, não dentro de `services/`, para que o CD leia tudo de um único
+> repositório. Ver [arquitetura](docs/architecture.md).
+
+---
+
+## Pré-requisitos
+
+| Ferramenta | Para quê |
+|------------|----------|
+| Go 1.26.x | compilar os serviços |
+| Docker | buildar imagens e rodar o compose |
+| Helm 3.x | renderizar os charts |
+| Python 3.12.x + PyYAML | rodar o orquestrador |
+| gcloud · kubectl · istioctl | somente para a demo de cluster |
+
+---
+
+## Licença / uso
+
+PoC de referência para um case de homologação integrada. Dados são mockados e
+determinísticos; nenhum dado real é usado.

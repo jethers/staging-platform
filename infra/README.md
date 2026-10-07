@@ -63,7 +63,7 @@ kubectl get pods -n payments         # wallet, ledger, checkout (compartilhados)
 ### 6. Homologar a candidata do wallet (orquestrador → gitops → Argo)
 Rode o orquestrador localmente e faça commit/push (o Argo observa `main`):
 ```bash
-./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
+./scripts/simulate-ci.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 git add gitops-staging && git commit -m "demo: homologa candidata do wallet" && git push
 ```
 > Use o digest real da wallet v2.0.0 (publicado no Artifact Registry).

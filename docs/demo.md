@@ -8,7 +8,7 @@ e **o resultado esperado**.
 O que esta demo prova:
 
 1. O **setup** do gitops (estado base: produção e staging espelhados)
-2. O **orquestrador** manipulando o gitops ao homologar uma candidata (via `simulate-jenkins.sh`)
+2. O **orquestrador** manipulando o gitops ao homologar uma candidata (via `simulate-ci.sh`)
 3. A **renderização dos templates** (helm template) para cada papel — incluindo o roteamento Istio
 4. O **promote** fechando o ciclo (via `simulate-change.sh`): atualização e limpeza
 
@@ -82,9 +82,9 @@ git status --short gitops-staging gitops-production
 
 ## Bloco 1 — Orquestrador homologando a candidata do wallet
 
-**Objetivo:** provar a lógica da plataforma operando sobre o gitops. O `simulate-jenkins.sh`
-reproduz o Jenkins acionando o GitHub Actions (orquestrador) com o serviço e o digest da
-candidata.
+**Objetivo:** provar a lógica da plataforma operando sobre o gitops. O `simulate-ci.sh`
+reproduz a Pipeline de CI acionando o CD (o orquestrador) com o serviço e o digest da
+candidata. O build/scan/push da imagem é responsabilidade do CI — fora do escopo do projeto.
 
 ### 1.1 Snapshot "antes"
 
@@ -95,10 +95,10 @@ git status --short gitops-staging
 Guarde esse estado como referência. A única diferença após o Bloco 1 deve ser a criação das
 pastas efêmeras `wallet/candidate/` e `checkout/client/for-wallet/`.
 
-### 1.2 Rodar a homologação (simula o Jenkins → orquestrador)
+### 1.2 Rodar a homologação (simula a Pipeline de CI → CD/orquestrador)
 
 ```bash
-./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
+./scripts/simulate-ci.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0
 ```
 
 **O que prova:** o orquestrador valida o onboarding do wallet, confirma que a dependência
@@ -149,7 +149,7 @@ runtime ativo. O `wallet` depende do `ledger`; se o staging do ledger estiver va
 # esvazia o staging do ledger (simula dependência sem runtime compartilhado)
 printf 'image:\n  digest: ""\n' > gitops-staging/ledger/staging/release.yaml
 
-./scripts/simulate-jenkins.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0 ; echo "EXIT: $?"
+./scripts/simulate-ci.sh wallet sha256:1fc69a744be805b0196bc36c5d8ecab4a0e17818a8db9370b5619ad5fe971dd0 ; echo "EXIT: $?"
 
 # restaura o runtime do ledger para seguir a demo
 ./scripts/setup-gitops.sh >/dev/null
@@ -227,8 +227,8 @@ helm template checkout-wallet-client ./helm/service-chart \
 
 ## Bloco 3 — Promote (fechamento do ciclo na janela de change)
 
-**Objetivo:** provar o fechamento do ciclo. O `simulate-change.sh` condensa o Job 2 do
-GitHub Actions (janela de change aprovada), em dois passos na ordem correta:
+**Objetivo:** provar o fechamento do ciclo. O `simulate-change.sh` condensa a etapa de
+change da Pipeline de CD (janela de change aprovada), em dois passos na ordem correta:
 1. atualiza o `gitops-production/wallet/release.yaml` com o novo digest (o merge do PR de
    promoção) — **se este passo falhar, o promote não roda**;
 2. executa o `promote.py` (pós-deploy): espelha o digest no runtime compartilhado do staging
@@ -266,7 +266,7 @@ git status --short                    # deve mostrar árvore limpa (só os scrip
 ## Checklist de validação da demo
 
 - [ ] `setup-gitops.sh` deixa os 3 serviços com runtime e digest produtivo (Bloco 0)
-- [ ] `simulate-jenkins.sh wallet` provisiona candidata + client corretamente (Bloco 1.2–1.4)
+- [ ] `simulate-ci.sh wallet` provisiona candidata + client corretamente (Bloco 1.2–1.4)
 - [ ] `git status` após o Bloco 1 mostra só `candidate/` e `client/for-wallet/` novos (Bloco 1.3)
 - [ ] Orquestrador falha com erro claro quando dependência não tem runtime (Bloco 1.5)
 - [ ] `helm lint` passa (Bloco 2.1)
