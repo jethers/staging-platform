@@ -19,9 +19,11 @@
 
 set -euo pipefail
 
-PROJECT_ID="staging-platform-510420"
-REGION="us-central1"
-REPO="docker-images"
+# Configuração via ambiente (exporte PROJECT_ID antes de rodar).
+# Sem PROJECT_ID exportado, usa o placeholder e os comandos gcloud falham de forma óbvia.
+PROJECT_ID="${PROJECT_ID:-YOUR_GCP_PROJECT}"
+REGION="${REGION:-us-central1}"
+REPO="${REPO:-docker-images}"
 REGISTRY="${REGION}-docker.pkg.dev"
 BASE="${REGISTRY}/${PROJECT_ID}/${REPO}"
 

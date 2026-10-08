@@ -17,6 +17,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUTO_YES="${1:-}"
 
+# Project id vem do ambiente (os sub-scripts fazem o mesmo). Usado só nos lembretes abaixo.
+PROJECT_ID="${PROJECT_ID:-YOUR_GCP_PROJECT}"
+
 echo "════════════════════════════════════════════════════════════"
 echo " LIMPEZA COMPLETA DA POC (GCP)"
 echo "════════════════════════════════════════════════════════════"
@@ -33,9 +36,9 @@ echo " Passos manuais que NÃO são destruídos por este script:"
 echo "   • Deploy key no GitHub (repo → Settings → Deploy keys → remover 'argocd')"
 echo "   • Chave SSH local: rm ~/.ssh/argocd_staging_platform{,.pub}"
 echo "   • Projeto GCP (se quiser zerar tudo):"
-echo "       gcloud projects delete staging-platform-510420"
+echo "       gcloud projects delete ${PROJECT_ID}"
 echo
 echo " Conferir resíduos de rede (devem estar vazios):"
-echo "   gcloud compute forwarding-rules list --project=staging-platform-510420"
-echo "   gcloud compute addresses list --project=staging-platform-510420"
-echo "   gcloud compute disks list --project=staging-platform-510420"
+echo "   gcloud compute forwarding-rules list --project=${PROJECT_ID}"
+echo "   gcloud compute addresses list --project=${PROJECT_ID}"
+echo "   gcloud compute disks list --project=${PROJECT_ID}"

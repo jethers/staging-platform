@@ -5,11 +5,20 @@ desviando o tráfego real do client de regressão para a candidata — num clust
 Autopilot de verdade. Complementa a demo local ([`demo.md`](demo.md)), que prova a
 lógica sem cluster via `helm template`.
 
-**Projeto:** `staging-platform-510420` · **Região:** `us-central1`
-**Repo (privado):** `git@github.com:jethers/staging-platform.git`
-
 O setup detalhado de cada componente está em [`../infra/README.md`](../infra/README.md);
 aqui o foco é a **narrativa da demonstração** e as validações que provam o roteamento.
+
+### Configuração (exporte antes de rodar)
+
+```bash
+export PROJECT_ID=<seu-projeto-gcp>
+export REGION=us-central1          # região do cluster e do Artifact Registry
+```
+
+> **Fronteira de escopo:** o **cluster** GKE (com `allow-net-admin`) é **premissa**. O
+> **Istio e o Argo CD são instalados por esta demo** (Bloco 1), como parte da solução —
+> não são pré-requisitos do cluster. Ver
+> [Fronteiras de escopo](architecture.md#fronteiras-de-escopo).
 
 > ⚠️ **Custo:** o cluster Autopilot cobra enquanto estiver no ar. Ao terminar, destrua
 > tudo com `./infra/cleanup/cleanup-all.sh`.
@@ -38,7 +47,7 @@ O GKE puxa as imagens por digest do Artifact Registry. Primeiro buildar, depois 
 ```
 
 **O que prova:** as 4 imagens ficam disponíveis em
-`us-central1-docker.pkg.dev/staging-platform-510420/docker-images/<svc>`, com os digests
+`$REGION-docker.pkg.dev/$PROJECT_ID/docker-images/<svc>`, com os digests
 que os `release.yaml` do gitops referenciam.
 
 ---
@@ -50,10 +59,10 @@ Ver [`../infra/README.md`](../infra/README.md) para o detalhe. Em resumo:
 ```bash
 # 1. Cluster Autopilot — ESSENCIAL a flag allow-net-admin (senão o Istio não injeta sidecar)
 gcloud container clusters create-auto staging-platform \
-  --project=staging-platform-510420 --location=us-central1 \
+  --project="$PROJECT_ID" --location="$REGION" \
   --autopilot-workload-policies=allow-net-admin
 gcloud container clusters get-credentials staging-platform \
-  --project=staging-platform-510420 --location=us-central1
+  --project="$PROJECT_ID" --location="$REGION"
 
 # 2. Istio sem CNI (no Autopilot o CNI exige SYS_ADMIN, indisponível; usa-se istio-init)
 ./infra/02-install-istio.sh
@@ -195,9 +204,9 @@ detectou e fez prune, o Argo removeu os pods, o compartilhado reconciliou para a
 Passos manuais restantes (a saída lembra): remover a deploy key do GitHub e, se quiser
 zerar, apagar a chave SSH local e o projeto GCP. Confira resíduos de rede:
 ```bash
-gcloud compute forwarding-rules list --project=staging-platform-510420
-gcloud compute addresses list --project=staging-platform-510420
-gcloud compute disks list --project=staging-platform-510420
+gcloud compute forwarding-rules list --project="$PROJECT_ID"
+gcloud compute addresses list --project="$PROJECT_ID"
+gcloud compute disks list --project="$PROJECT_ID"
 ```
 
 ---

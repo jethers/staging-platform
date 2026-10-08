@@ -3,11 +3,24 @@
 Runbook end-to-end para subir a plataforma de homologação num cluster GKE Autopilot
 com Istio OSS e Argo CD, validar o roteamento Istio em runtime, e destruir tudo.
 
-**Projeto:** `staging-platform-510420` · **Região:** `us-central1`
-**Repo (privado):** `git@github.com:jethers/staging-platform.git`
+**Repo:** o seu fork/clone (as `Application`s do Argo apontam para a URL do seu repositório).
 
 O teste é **mesh-interno** (client → candidata via sidecar) — sem ingress gateway,
 sem Load Balancer. Validação por `kubectl exec`/`port-forward`.
+
+### Configuração (exporte antes de rodar)
+
+Os comandos usam variáveis de ambiente para não acoplar o runbook a um projeto específico:
+
+```bash
+export PROJECT_ID=<seu-projeto-gcp>
+export REGION=us-central1          # região do cluster e do Artifact Registry
+```
+
+> **Fronteira de escopo:** o **cluster** GKE (com `allow-net-admin`) é **premissa** —
+> provisione-o antes (passo 1 é um guia de conveniência para a demo). **Istio e Argo CD
+> são instalados por este runbook** (passos 2 e 4), como parte da solução. Ver
+> [Fronteiras de escopo](../docs/architecture.md#fronteiras-de-escopo).
 
 ---
 
@@ -28,7 +41,7 @@ Ver `01-create-cluster.md` (gcloud ou console). **Essencial:** flag
 `allow-net-admin` (sem ela o Istio não injeta sidecar no Autopilot). Depois:
 ```bash
 gcloud container clusters get-credentials staging-platform \
-  --project=staging-platform-510420 --location=us-central1
+  --project="$PROJECT_ID" --location="$REGION"
 ```
 
 ### 2. Instalar o Istio (sem gateway)

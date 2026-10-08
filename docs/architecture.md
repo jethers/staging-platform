@@ -39,16 +39,23 @@ ciclo se completar.
   livre.
 - **Imagens disponíveis no registry por digest.** Os `release.yaml` do gitops referenciam
   imagens por digest imutável; publicá-las é pré-requisito.
-- **Cluster, Istio e Argo CD provisionados.** A plataforma assume um cluster de homologação
-  com Istio (service mesh) e um controlador GitOps (Argo CD) já instalados. O
-  provisionamento está documentado em [`../infra/README.md`](../infra/README.md), mas o
-  mecanismo é substituível.
+- **Cluster Kubernetes com suporte a service mesh.** A plataforma assume um cluster de
+  homologação **já criado** e capaz de rodar um service mesh (no GKE Autopilot, isso
+  significa a flag `allow-net-admin` habilitada na criação do cluster). O cluster em si é
+  pré-requisito de ambiente — provisionado pela equipe de plataforma/infra, com o mecanismo
+  que ela preferir. **Istio e Argo CD NÃO são premissa**: este projeto os instala e
+  configura (ver abaixo).
 - **`gitops-production` alimentado por algum CD.** Os digests produtivos vigentes são lidos
   do repositório `gitops-production`; mantê-lo atualizado é responsabilidade do fluxo de
   deploy de produção.
 
 ### O que foi implementado (o escopo deste projeto)
 
+- **Instalação e configuração do Istio** no cluster (`infra/02-install-istio.sh`): control
+  plane em profile minimal, sem CNI (o Autopilot não concede `SYS_ADMIN` ao CNI node agent;
+  usa-se o init-container `istio-init`), e o label de injeção de sidecar no namespace da
+  aplicação. **O Istio é entregável deste projeto, não premissa do cluster.**
+- **Instalação do Argo CD** no cluster (`infra/04-install-argocd.sh`), também parte do projeto.
 - **Orquestrador de setup** (`orchestrator.py` + `manifest/validator/writer`): lê os
   manifestos de homologação, valida onboarding e pré-requisitos, e escreve as pastas
   efêmeras (candidata + clients de regressão) no `gitops-staging`.

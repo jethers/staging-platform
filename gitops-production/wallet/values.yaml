@@ -2,7 +2,7 @@
 name: wallet
 
 image:
-  repository: us-central1-docker.pkg.dev/staging-platform-510420/docker-images/wallet
+  repository: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/docker-images/wallet
   pullPolicy: IfNotPresent
 
 service:

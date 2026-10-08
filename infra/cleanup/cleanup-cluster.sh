@@ -11,9 +11,9 @@
 
 set -euo pipefail
 
-PROJECT_ID="staging-platform-510420"
-LOCATION="us-central1"
-CLUSTER="staging-platform"
+PROJECT_ID="${PROJECT_ID:-YOUR_GCP_PROJECT}"
+LOCATION="${LOCATION:-us-central1}"
+CLUSTER="${CLUSTER:-staging-platform}"
 
 AUTO_YES="${1:-}"
 

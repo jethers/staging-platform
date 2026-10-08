@@ -17,11 +17,16 @@ versionadas nos repositórios gitops; o **Argo CD** aplica no cluster.
 
 Para evitar ambiguidade sobre o que a plataforma faz:
 
-- **Entra pronto (premissa):** o **CI de cada serviço** builda, escaneia e publica a imagem
-  candidata, e ao final **aciona o CD** (o orquestrador) com `service` + `digest`. A
-  ferramenta de CI/CD é intercambiável (GitHub Actions, GitLab CI, Jenkins, …).
-- **Implementado aqui:** o orquestrador (setup + promote), o Helm chart genérico, o
-  roteamento Istio (VirtualService) e o ApplicationSet que descobre os papéis.
+- **Entra pronto (premissa):**
+  - o **CI de cada serviço** builda, escaneia e publica a imagem candidata, e ao final
+    **aciona o CD** (o orquestrador) com `service` + `digest`. A ferramenta de CI/CD é
+    intercambiável (GitHub Actions, GitLab CI, Jenkins, …);
+  - um **cluster Kubernetes** com suporte a service mesh (no GKE Autopilot, a flag
+    `allow-net-admin`). Só o cluster é premissa — ver abaixo.
+- **Implementado aqui:** a **instalação do Istio** e do **Argo CD** no cluster, o
+  orquestrador (setup + promote), o Helm chart genérico, o roteamento Istio (VirtualService)
+  e o ApplicationSet que descobre os papéis. *Istio e Argo CD são entregáveis do projeto,
+  não premissa do cluster.*
 - **Sai para outro sistema (dependência):** a automação **só escreve no gitops**. Quem
   aplica no cluster — tanto em homologação quanto em produção — é o **Argo CD** (ou outra
   solução GitOps). Na promoção, a automação apenas grava o digest homologado em
@@ -116,6 +121,31 @@ staging-platform/
 | Helm 3.x | renderizar os charts |
 | Python 3.12.x + PyYAML | rodar o orquestrador |
 | gcloud · kubectl · istioctl | somente para a demo de cluster |
+
+---
+
+## Testando com seu próprio GCP
+
+Os valores específicos de ambiente são parametrizados — nenhum ID de projeto real está
+no repositório. Para rodar a demo de cluster no seu projeto:
+
+1. **Exporte as variáveis** (usadas pelos scripts e documentadas nos runbooks):
+   ```bash
+   export PROJECT_ID=<seu-projeto-gcp>
+   export REGION=us-central1
+   ```
+2. **Substitua o placeholder nos values do gitops.** Os `gitops-*/<svc>/values.yaml` usam
+   `YOUR_GCP_PROJECT` no caminho da imagem; troque pelo seu projeto (o Argo/Helm lê esse
+   valor literalmente, não expande variável de ambiente):
+   ```bash
+   grep -rl YOUR_GCP_PROJECT gitops-staging gitops-production \
+     | xargs sed -i "s|YOUR_GCP_PROJECT|$PROJECT_ID|g"
+   ```
+3. Siga a [demo de cluster](docs/demo-cluster.md). O **cluster** é premissa; **Istio e
+   Argo CD** são instalados pelo runbook. Ver [fronteiras de escopo](docs/architecture.md#fronteiras-de-escopo).
+
+A demo **local** ([docs/demo.md](docs/demo.md)) não precisa de GCP e funciona com o
+placeholder — ela só renderiza/manipula o gitops, sem puxar imagens.
 
 ---
 

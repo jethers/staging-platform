@@ -12,9 +12,9 @@
 
 set -euo pipefail
 
-PROJECT_ID="staging-platform-510420"
-LOCATION="us-central1"
-REPO="docker-images"
+PROJECT_ID="${PROJECT_ID:-YOUR_GCP_PROJECT}"
+LOCATION="${LOCATION:-us-central1}"
+REPO="${REPO:-docker-images}"
 
 AUTO_YES="${1:-}"
 
