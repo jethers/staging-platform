@@ -1,4 +1,4 @@
-# Staging Platform — PoC de Homologação Integrada
+# Staging Platform — Pipeline de CD para Teste de Integração em Homologação
 
 **Pipeline de CD que provisiona ambientes isolados de teste de integração em homologação.**
 Quando uma nova versão (**candidata**) de um microsserviço sai do CI, esta plataforma faz o
