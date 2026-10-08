@@ -1,9 +1,9 @@
 # Orquestrador de Homologação
 
-O orquestrador prepara o ambiente de homologação no `gitops-staging`. São dois scripts no diretório `orchestrator/`, compartilhando os mesmos módulos auxiliares, acionados em momentos distintos do ciclo de vida:
+O orquestrador é o **CD** da plataforma: prepara o ambiente de homologação no `gitops-staging`. São dois scripts no diretório `orchestrator/`, compartilhando os mesmos módulos auxiliares, acionados em momentos distintos do ciclo de vida:
 
-- **`orchestrator.py`** — setup da candidata (acionado pelo CI quando uma candidata entra em homologação)
-- **`promote.py`** — atualização e limpeza (acionado após o deploy em produção ser concluído — ver [pós-deploy](post-deploy.md))
+- **`orchestrator.py`** — setup da candidata (acionado pela Pipeline de CI quando uma candidata entra em homologação)
+- **`promote.py`** — atualização e limpeza (passo pós-deploy, após o deploy em produção ser concluído — ver [pós-deploy](post-deploy.md))
 
 Este documento descreve o `orchestrator.py` (setup).
 

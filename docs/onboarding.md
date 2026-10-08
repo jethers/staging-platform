@@ -21,7 +21,7 @@ gitops-staging/
       release.yaml         # image.digest vazio (só Service, sem runtime)
 ```
 
-> O onboarding cria apenas a parte **permanente**: `values.yaml` base, `dependencies.yaml`, `clients.yaml` e a pasta `staging/`. A pasta `candidate/` **não** faz parte do onboarding — é criada pelo orquestrador quando a homologação é disparada, e removida na limpeza (efêmera). As pastas `dependency/for-*/` e `client/for-*/` também são criadas pelo orquestrador.
+> O onboarding cria apenas a parte **permanente**: `values.yaml` base, `dependencies.yaml`, `clients.yaml` e a pasta `staging/`. A pasta `candidate/` **não** faz parte do onboarding — é criada pelo orquestrador quando a homologação é disparada, e removida na limpeza (efêmera). As pastas `client/for-*/` também são criadas pelo orquestrador. (No MVP não há pasta `dependency/for-*/` — dependências são compartilhadas; ver decisão 19.)
 >
 > O orquestrador não cria a config permanente — se faltar quando o serviço for usado (como candidata, dependência ou client), ele falha com erro "serviço não onboardado" (ver decisões 18 e 20). A pasta `staging/` garante o Service (host no mesh) mesmo sem runtime; deixe `release.yaml` com digest vazio se não houver versão compartilhada.
 

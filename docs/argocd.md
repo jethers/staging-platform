@@ -6,35 +6,50 @@ Este documento descreve como o Argo CD provisiona e destrói os ambientes de hom
 
 Um único **ApplicationSet** monitora todos os arquivos `release.yaml` do `gitops-staging` via **Git file generator**. Cada `release.yaml` encontrado gera uma **Application** independente.
 
+O manifesto real está em [`infra/argocd/applicationset.yaml`](../infra/argocd/applicationset.yaml).
+Em resumo:
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: staging-services
+  name: homologacao
 spec:
+  goTemplate: true
   generators:
     - git:
-        repoURL: https://github.com/<org>/gitops-staging
+        # chart e gitops vivem no mesmo monorepo
+        repoURL: git@github.com:<org>/<repo>.git
         revision: main
         files:
-          - path: "**/release.yaml"
+          - path: "gitops-staging/**/release.yaml"   # cada release.yaml = um papel
   template:
     metadata:
-      name: '{{...}}'   # nome derivado do caminho (service + role + target)
+      # nome derivado do caminho da pasta (ex.: gitops-staging-wallet-candidate)
+      name: '{{ .path.path | replace "/" "-" }}'
     spec:
       source:
+        path: helm/service-chart            # o chart genérico
         helm:
-          # paths relativos ao diretório da situação; o número de "../" depende do nível
-          # (staging/ e candidate/ → ../values.yaml; client/for-x/ → ../../../values.yaml)
+          parameters:
+            - name: namespace
+              value: payments
+          # paths relativos ao diretório do chart (helm/service-chart)
           valueFiles:
-            - <base>/values.yaml  # base do serviço (comum)
-            - values.yaml         # overrides do role (role, target)
-            - release.yaml        # digest
+            - ../../{{ index .path.segments 1 | printf "gitops-staging/%s/values.yaml" }}  # base
+            - ../../{{ .path.path }}/values.yaml   # overrides do papel (role, target)
+            - ../../{{ .path.path }}/release.yaml  # digest
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
 ```
+
+> Nota: o chart e os values vivem no **mesmo** repositório; o `source.path` aponta para
+> o chart (`helm/service-chart`) e os `valueFiles` alcançam o gitops por caminho relativo
+> (`../../gitops-staging/...`). O serviço base é derivado do 2º segmento do caminho
+> (`index .path.segments 1`), o que funciona tanto para papéis rasos (candidate) quanto
+> profundos (client/for-x).
 
 ## Duas camadas de responsabilidade
 
@@ -44,18 +59,10 @@ O modelo tem duas camadas independentes que não se confundem:
 
 **Camada 2 — Application (reconcilia o conteúdo):** cada Application gerada aponta para o **diretório** do serviço e lê todos os valueFiles do Helm (base + overrides do role + release). Qualquer mudança em qualquer um desses arquivos sensibiliza a Application e dispara reconciliação no cluster.
 
-```yaml
-# cada Application gerada
-source:
-  path: <service>/<role-dir>        # staging, candidate, client/for-x
-  helm:
-    valueFiles:
-      - <base>/values.yaml           # base do serviço: name, namespace, image, env
-      - values.yaml                  # overrides do role: role, target
-      - release.yaml                 # digest
-```
-
-O path do base (`<base>`) é relativo à situação: `../values.yaml` para `staging/` e `candidate/`, `../../../values.yaml` para `client/for-x/`.
+Cada Application gerada usa o chart `helm/service-chart` e três valueFiles: a base do
+serviço, os overrides do papel e o release (digest). Os caminhos são relativos ao
+diretório do chart; o serviço base é derivado do 2º segmento do caminho descoberto
+(ver o manifesto real acima).
 
 O `release.yaml` serve às duas camadas ao mesmo tempo: para o ApplicationSet é o gatilho de existência; para a Application é um dos valueFiles reconciliados.
 
@@ -70,7 +77,7 @@ A presença ou ausência de um `release.yaml` controla a existência da Applicat
 
 Isso define a semântica de limpeza:
 
-- **Efêmeros** (candidate, dependency, client): a limpeza remove a **pasta inteira** → o `release.yaml` some → Application deletada → tudo removido do cluster
+- **Efêmeros** (candidate, client; no MVP não há dependency — decisão 19): a limpeza remove a **pasta inteira** → o `release.yaml` some → Application deletada → tudo removido do cluster
 - **Staging**: o `release.yaml` **nunca é removido** — permanece sempre (parte do onboarding), mesmo com digest vazio
 
 ## Namespace via manifesto (opção escolhida)
@@ -101,7 +108,7 @@ Consequências no staging:
 
 ### Nos efêmeros é diferente: remoção completa
 
-Para candidate, dependency e client, não há "digest condicional preservando Service". A limpeza remove o **diretório inteiro** da pasta efêmera, o que deleta a Application e remove **todos** os recursos daquele efêmero — Service, Deployment e VirtualService. Nada é preservado. Ver [pós-deploy](post-deploy.md).
+Para os efêmeros (candidate e client), não há "digest condicional preservando Service". A limpeza remove o **diretório inteiro** da pasta efêmera, o que deleta a Application e remove **todos** os recursos daquele efêmero — Service, Deployment e VirtualService. Nada é preservado. Ver [pós-deploy](post-deploy.md).
 
 ## Prune é requisito da plataforma
 

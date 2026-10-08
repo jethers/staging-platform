@@ -4,6 +4,8 @@ Após uma candidata ser promovida e deployada em produção, dois processos dist
 
 Ambos reagem a um deploy em produção e recebem como entrada o **nome do serviço promovido** e o **novo digest produtivo**.
 
+> **Ordem no ciclo de change:** o `promote.py` é o **passo pós-deploy**. Antes dele, o repo de **produção** (`gitops-production/<service>/release.yaml`) já foi atualizado com o novo digest (o merge do PR de promoção) e o rollout em produção concluiu. Só então o `promote.py` espelha o digest no staging compartilhado e limpa os efêmeros. Na demo, o `scripts/simulate-change.sh` encadeia os dois passos (atualiza produção → roda o `promote.py`), abortando se a atualização de produção falhar.
+
 ## Princípio: homologação sempre reflete a produção atual
 
 O ambiente de homologação deve espelhar continuamente a realidade de produção. Quando um serviço muda em produção, **todas as candidatas que dependem dele são confrontadas com a nova versão imediatamente**, mesmo no meio do seu ciclo de teste.
@@ -53,7 +55,7 @@ Em todos os casos, ao sumir o `release.yaml` (junto com a pasta), o ApplicationS
 | | Atualização | Limpeza |
 |---|-------------|---------|
 | Escopo | `gitops-staging/<service>/**` (usos produtivos do serviço) | sufixo `for-<service>` + `<service>/candidate/` |
-| O que faz | Reescreve digest para a nova versão | Remove por inteiro as pastas efêmeras (candidate, dependency, client) |
+| O que faz | Reescreve digest para a nova versão | Remove por inteiro as pastas efêmeras (candidate, client) |
 | Alcança | Dependências do serviço em **outras** candidatas | Apenas os efêmeros da homologação encerrada |
 
 Exemplo concreto com `wallet` promovido:
@@ -69,7 +71,7 @@ Se o rollout em produção falhar, **nada é limpo ou atualizado**. O ambiente d
 
 O setup da candidata (`orchestrator.py`) e a atualização/limpeza (`promote.py`) ocorrem em momentos distintos do ciclo de vida:
 
-- `orchestrator.py` — acionado pelo CI quando uma candidata entra em homologação
-- `promote.py` — acionado após o deploy em produção ser concluído com sucesso
+- `orchestrator.py` — o CD (acionado pela Pipeline de CI) quando uma candidata entra em homologação
+- `promote.py` — o passo pós-deploy do CD, após o deploy em produção ser concluído com sucesso
 
 São scripts separados no mesmo diretório `orchestrator/`, compartilhando os módulos auxiliares (`manifest.py`, `writer.py`, `validator.py`). Não são projetos distintos — apenas entry points distintos para operações distintas sobre o mesmo repositório.
