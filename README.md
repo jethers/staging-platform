@@ -1,12 +1,19 @@
 # Staging Platform — PoC de Homologação Integrada
 
-Plataforma de homologação integrada para microsserviços. Uma versão **candidata** de um
-serviço é testada contra as versões **produtivas** de suas dependências, num ambiente
-compartilhado e isolado, com o tráfego dos clients de regressão desviado para a candidata
-de forma transparente pelo **Istio** — sem alterar o código das aplicações.
+**Pipeline de CD que provisiona ambientes isolados de teste de integração em homologação.**
+Quando uma nova versão (**candidata**) de um microsserviço sai do CI, esta plataforma faz o
+deploy dela num ambiente de homologação onde ela é exercitada contra as versões
+**produtivas** de suas dependências e de seus consumidores (clients de regressão) — provando
+a integração entre domínios **antes** da produção, sem coordenação entre squads.
 
-O fluxo é **GitOps**: a automação transforma um gatilho `(service, digest)` em alterações
-versionadas nos repositórios gitops; o **Argo CD** aplica no cluster.
+O ambiente de cada candidata é **isolado e efêmero**: o tráfego dos clients de regressão é
+desviado para a candidata de forma transparente pelo **Istio** (sem alterar o código das
+aplicações), e todo o resto do mesh continua na versão compartilhada. Ao fim do ciclo, o
+ambiente é destruído automaticamente.
+
+O fluxo é **GitOps**: a automação (o CD) transforma um gatilho `(service, digest)` vindo do
+CI em alterações versionadas nos repositórios gitops; o **Argo CD** aplica no cluster e
+remove os efêmeros quando a candidata é promovida.
 
 > Status: PoC validada end-to-end num cluster **GKE Autopilot** real — incluindo o
 > roteamento Istio em runtime (ver [demo de cluster](docs/demo-cluster.md)).
