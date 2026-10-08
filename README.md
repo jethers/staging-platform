@@ -151,5 +151,5 @@ placeholder — ela só renderiza/manipula o gitops, sem puxar imagens.
 
 ## Licença / uso
 
-PoC de referência para um case de homologação integrada. Dados são mockados e
-determinísticos; nenhum dado real é usado.
+Licenciado sob a [Apache License 2.0](LICENSE). PoC de referência para um case de
+homologação integrada — dados são mockados e determinísticos; nenhum dado real é usado.
